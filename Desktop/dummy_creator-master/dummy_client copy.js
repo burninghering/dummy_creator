@@ -19,6 +19,41 @@ ws.on('open', () => {
         console.log(`Sent Air data to WebSocket server for Hour ${currentHour}`);
     }, 60000); // 1분마다 데이터 전송
 
+
+
+    // 대기데이터 시나리오 생성
+    setInterval(() => {
+    const currentHour = new Date().getHours(); // 현재 시간에 맞춰 데이터 생성
+    const currentDay = new Date().getDay();    // 요일을 얻어와 시나리오 적용
+    const event = getEventForGuryongpo();      // 구룡포항에서 발생할 이벤트 결정 (예: 어선 활동, 폭풍 경보 등)
+
+    // 대기 데이터 생성 및 WebSocket 서버로 전송
+    for (let devId = 1; devId <= 5; devId++) {
+        // 시나리오에 따라 데이터를 생성
+        const airData = triggerScenario(devId, currentHour, currentDay, event);
+        ws.send(JSON.stringify(airData)); // WebSocket 서버로 데이터 전송
+    }
+
+    console.log(`Sent Air data to WebSocket server for Hour ${currentHour} with event ${event}`);
+}, 1000); // 1초마다 데이터 전송
+
+// 구룡포항에서 발생할 이벤트를 결정하는 함수
+function getEventForGuryongpo() {
+    const randomValue = Math.random();
+    if (randomValue < 0.3) {
+        return 'fishing_boat'; // 30% 확률로 어선 활동
+    } else if (randomValue < 0.6) {
+        return 'tourism'; // 30% 확률로 관광 성수기
+    } else if (randomValue < 0.9) {
+        return 'storm'; // 30% 확률로 폭풍 경보
+    } else {
+        return null; // 이벤트 없음 (기본 상태)
+    }
+}
+
+
+
+
     
     setInterval(() => {
         const currentHour = new Date().getHours(); // 현재 시간에 맞춰 데이터 생성
@@ -33,16 +68,43 @@ ws.on('open', () => {
     }, 60000); // 1분마다 데이터 전송
 
 
-    // 1초마다 Vessel 데이터를 생성하여 서버로 전송
-    setInterval(() => {
-        // Vessel 데이터 생성 (1 ~ 10번 devId)
-        for (let devId = 1; devId <= 10; devId++) {
-            const vesselData = generateDummyVesselData(devId);
-            ws.send(JSON.stringify(vesselData));
-        }
+// 1초마다 Vessel 데이터를 생성하여 서버로 전송
+setInterval(() => {
+    // 다각형 구역을 미리 정의
+    const userDefinedPolygon = [
+        [35.989301, 129.559683],  // 첫 번째 꼭짓점
+        [35.990568, 129.557613],
+        [35.990018, 129.555920],
+        [35.989333, 129.556572],
+        [35.988770, 129.555796],
+        [35.989203, 129.555154],
+        [35.987217, 129.552773],
+        [35.985626, 129.552162],
+        [35.983288, 129.555102],
+        [35.986041, 129.560725],
+        [35.983321, 129.559852],
+        [35.978506, 129.553306],
+        [35.969736, 129.555431],
+        [35.986004, 129.572315],
+        [35.988819, 129.561302],
+        [35.986642, 129.558267],
+        [35.985553, 129.558330],
+        [35.985502, 129.557610],
+        [35.987199, 129.556984],
+        [35.987072, 129.557047],
+        [35.989301, 129.559683]    // 마지막 좌표 (다각형 닫기)
+    ];
 
-        console.log('Sent Vessel data to WebSocket server');
-    }, 1000); // 1초마다 데이터 전송
+    // Vessel 데이터 생성 (1 ~ 10번 devId)
+    for (let devId = 1; devId <= 50; devId++) {
+        // 수정된 generateDummyVesselData 함수 호출 시 다각형을 전달
+        const vesselData = generateDummyVesselData(devId, userDefinedPolygon);
+        ws.send(JSON.stringify(vesselData));  // WebSocket으로 데이터 전송
+    }
+
+    // console.log('Sent Vessel data to WebSocket server');
+}, 5000); // 5초마다 데이터 전송
+
 });
 
 
@@ -200,6 +262,12 @@ function generateTimeBasedDummyBuoyData(devId, hour) {
 //<----------------------------------------------------------------선박 
 let vesselState = {}; // 각 선박의 상태를 저장하는 객체
 
+// 두 점(위도, 경도) 사이의 거리를 계산하는 함수 (간단한 유클리드 거리)
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    return Math.sqrt(Math.pow(lat2 - lat1, 2) + Math.pow(lon2 - lon1, 2));
+}
+
+// 날짜를 'YYYY-MM-DD HH:MM:SS' 형식으로 변환하는 함수
 function formatDateToYYYYMMDDHHMMSS(date) {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -210,14 +278,68 @@ function formatDateToYYYYMMDDHHMMSS(date) {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
-function generateDummyVesselData(devId) {
-    let currentDate = new Date();
+// 점이 다각형 내부에 있는지 확인하는 함수 (Ray-casting 알고리즘)
+function isPointInPolygon(point, polygon) {
+    let x = point[0], y = point[1];
+    let inside = false;
 
-    // devId에 대한 상태가 없으면 초기화 (구룡포 해안을 기준으로 설정)
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        let xi = polygon[i][0], yi = polygon[i][1];
+        let xj = polygon[j][0], yj = polygon[j][1];
+
+        let intersect = ((yi > y) !== (yj > y)) &&
+                        (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+    }
+
+    return inside;
+}
+
+// 다각형 내부에서 임의의 좌표를 생성하는 함수
+function getRandomCoordinateWithinPolygon(polygon) {
+    let minLati = Math.min(...polygon.map(point => point[0]));
+    let maxLati = Math.max(...polygon.map(point => point[0]));
+    let minLongi = Math.min(...polygon.map(point => point[1]));
+    let maxLongi = Math.max(...polygon.map(point => point[1]));
+
+    let lati, longi;
+
+    // 다각형 내부에 있는 좌표가 나올 때까지 반복
+    do {
+        lati = minLati + Math.random() * (maxLati - minLati);
+        longi = minLongi + Math.random() * (maxLongi - minLongi);
+    } while (!isPointInPolygon([lati, longi], polygon));
+
+    return { lati, longi };
+}
+
+// 선박 충돌을 방지하는 함수
+function avoidCollision(devId, newLati, newLongi, safeDistance) {
+    for (let otherDevId in vesselState) {
+        if (otherDevId != devId) {
+            const otherVessel = vesselState[otherDevId];
+            const distance = calculateDistance(newLati, newLongi, otherVessel.lati, otherVessel.longi);
+            if (distance < safeDistance) {
+                return false;  // 충돌 가능성이 있으면 false 반환
+            }
+        }
+    }
+    return true;  // 충돌 가능성이 없으면 true 반환
+}
+
+// 선박 데이터를 생성하는 함수
+function generateDummyVesselData(devId, polygon) {
+    let currentDate = new Date();
+    const safeDistance = 0.001; // 충돌 방지를 위한 최소 거리 설정 (적절하게 조정 가능)
+
+    // 다각형 내부의 임의 좌표 선택
+    let { lati, longi } = getRandomCoordinateWithinPolygon(polygon);
+
+    // devId에 대한 상태가 없으면 초기화
     if (!vesselState[devId]) {
         vesselState[devId] = {
-            lati: 35.995 + (Math.random() * 0.01), // 구룡포 해안 근처 위도
-            longi: 129.564 + (Math.random() * 0.01), // 구룡포 해안 근처 경도
+            lati: lati, // 선택된 다각형 내부 좌표
+            longi: longi,
             speed: 2 + Math.random() * 10, // 초기 속도 (2 ~ 12 km/h)
             course: Math.floor(Math.random() * 360), // 초기 방향 (0 ~ 360도)
         };
@@ -225,12 +347,22 @@ function generateDummyVesselData(devId) {
 
     let state = vesselState[devId];
 
-    // 속도에 따라 위치 변경 
+    // 속도에 따라 위치 변경
     const speedFactor = state.speed / 1000; // 속도를 반영한 이동량 계산
-    state.lati += speedFactor * Math.cos((state.course * Math.PI) / 180); // 위도 이동
-    state.longi += speedFactor * Math.sin((state.course * Math.PI) / 180); // 경도 이동
+    let newLati = state.lati + speedFactor * Math.cos((state.course * Math.PI) / 180); // 위도 이동
+    let newLongi = state.longi + speedFactor * Math.sin((state.course * Math.PI) / 180); // 경도 이동
 
-    // 속도와 방향 변경 
+    // 새 좌표가 다각형 내부에 있는지 확인하고, 충돌을 피해야 하는지 확인
+    if (isPointInPolygon([newLati, newLongi], polygon) && avoidCollision(devId, newLati, newLongi, safeDistance)) {
+        // 다각형 내부이면서 충돌이 없는 경우에만 위치 업데이트
+        state.lati = newLati;
+        state.longi = newLongi;
+    } else {
+        // 다각형 밖이거나 충돌 가능성이 있으면 방향을 변경해서 다시 시도
+        state.course = (state.course + 180) % 360; // 방향을 반대로 바꿈
+    }
+
+    // 속도와 방향 변경
     state.speed += (Math.random() * 2 - 1); // 속도 변화 (-1 ~ +1 km/h)
     state.speed = Math.max(2, Math.min(12, state.speed)); // 속도를 2 ~ 12로 제한
     state.course += (Math.random() * 10 - 5); // 방향 변경 (-5 ~ +5도)
@@ -241,10 +373,163 @@ function generateDummyVesselData(devId) {
         id: devId,
         log_datetime: formatDateToYYYYMMDDHHMMSS(currentDate),
         rcv_datetime: formatDateToYYYYMMDDHHMMSS(currentDate),
-        lati: state.lati.toFixed(3), 
-        longi: state.longi.toFixed(3), 
-        speed: state.speed.toFixed(2), 
-        course: state.course.toFixed(0), 
-        azimuth: (50 + Math.floor(Math.random() * 10)).toFixed(0) 
+        lati: state.lati.toFixed(3),
+        longi: state.longi.toFixed(3),
+        speed: state.speed.toFixed(2),
+        course: state.course.toFixed(0),
+        azimuth: (50 + Math.floor(Math.random() * 10)).toFixed(0)
     };
 }
+    const userDefinedPolygon = [
+        [35.989301, 129.559683],  // 첫 번째 꼭짓점
+        [35.990568, 129.557613],
+        [35.990018, 129.555920],
+        [35.989333, 129.556572],
+        [35.988770, 129.555796],
+        [35.989203, 129.555154],
+        [35.987217, 129.552773],
+        [35.985626, 129.552162],
+        [35.983288, 129.555102],
+        [35.986041, 129.560725],
+        [35.983321, 129.559852],
+        [35.978506, 129.553306],
+        [35.969736, 129.555431],
+        [35.986004, 129.572315],
+        [35.988819, 129.561302],
+        [35.986642, 129.558267],
+        [35.985553, 129.558330],
+        [35.985502, 129.557610],
+        [35.987199, 129.556984],
+        [35.987072, 129.557047],
+        [35.989301, 129.559683]    // 마지막 좌표 (다각형 닫기)
+    ];
+
+// 선박 데이터 생성
+const newVesselData = generateDummyVesselData("vessel123", userDefinedPolygon);
+console.log(newVesselData);
+
+
+
+
+
+
+
+
+//<--시나리오-->
+function triggerScenario(devId, hour, dayOfWeek, event = null) {
+    // 구룡포항에서 일어날 수 있는 시나리오 설정
+    const isFishingBoatActive = (event === 'fishing_boat'); // 어선이 활동 중일 때
+    const isTouristPeakSeason = (event === 'tourism'); // 관광 성수기
+    const isStormWarning = (event === 'storm'); // 폭풍 경보 발생
+    
+    // 시간대별 조건
+    const isMorning = (hour >= 6 && hour < 9); // 오전 어선 출항 시간
+    const isAfternoon = (hour >= 12 && hour < 15); // 오후 관광객 방문 시간
+    const isEvening = (hour >= 18 && hour < 21); // 저녁 어선 귀항 시간
+
+    // 구룡포항에서 발생할 수 있는 시나리오
+    if (isFishingBoatActive && (isMorning || isEvening)) {
+        console.log("어선 활동: 어선의 출항 또는 귀항으로 인해 공기 오염 수치가 상승합니다.");
+        return generateFishingBoatScenario(devId, hour); // 어선 활동 중 더미 데이터 생성
+    } else if (isTouristPeakSeason && isAfternoon) {
+        console.log("관광 성수기: 많은 관광객이 방문하여 공기 오염 수치가 소폭 증가합니다.");
+        return generateTourismScenario(devId, hour); // 관광 성수기 더미 데이터 생성
+    } else if (isStormWarning) {
+        console.log("폭풍 경보: 바람과 악천후로 인해 공기질이 일시적으로 악화됩니다.");
+        return generateStormScenario(devId, hour); // 폭풍 경보 더미 데이터 생성
+    } else {
+        // 기본적인 공기질 데이터 생성
+        console.log("일반적인 구룡포항 환경: 기본 공기질 데이터를 생성합니다.");
+        return generateTimeBasedDummyAirData(devId, hour); // 기본 공기질 데이터 생성
+    }
+}
+
+// 어선 활동 시나리오
+function generateFishingBoatScenario(devId, hour) {
+    const data = {
+        DEV_ID: devId,
+        PM10: (50 + Math.random() * 20).toFixed(1), // 어선의 출항 또는 귀항 시 PM10 상승
+        NO2: (0.05 + Math.random() * 0.02).toFixed(3), // NO2 수치 상승
+        SO2: (0.03 + Math.random() * 0.01).toFixed(3), // SO2 수치 상승
+        TEMP: (20 + Math.random() * 5).toFixed(1), // 기본 온도 값
+        HUMI: (60 + Math.random() * 10).toFixed(1), // 기본 습도 값
+        WINDsp: (1.5 + Math.random() * 1).toFixed(1), // 기본 풍속
+        CO: (0.4 + Math.random() * 0.1).toFixed(3),
+        FIRM: "1.0.0",
+        SEND: 1
+    };
+    console.log("Fishing Boat Scenario Data:", data);
+    return data;
+}
+
+// 관광 성수기 시나리오
+function generateTourismScenario(devId, hour) {
+    const data = {
+        DEV_ID: devId,
+        PM10: (40 + Math.random() * 10).toFixed(1), // 관광 성수기에 관광객 활동으로 PM10 소폭 증가
+        NO2: (0.04 + Math.random() * 0.01).toFixed(3), // NO2 소폭 증가
+        SO2: (0.02 + Math.random() * 0.01).toFixed(3), // SO2 증가
+        TEMP: (22 + Math.random() * 5).toFixed(1), // 기본 온도 값
+        HUMI: (55 + Math.random() * 10).toFixed(1), // 기본 습도 값
+        WINDsp: (2.0 + Math.random() * 1).toFixed(1), // 기본 풍속
+        FIRM: "1.0.0",
+        SEND: 1
+    };
+    console.log("Tourism Scenario Data:", data);
+    return data;
+}
+
+// 폭풍 경보 시나리오
+function generateStormScenario(devId, hour) {
+    const data = {
+        DEV_ID: devId,
+        PM10: (30 + Math.random() * 15).toFixed(1), // 폭풍으로 인해 미세먼지 증가
+        NO2: (0.03 + Math.random() * 0.01).toFixed(3), // NO2 소폭 증가
+        SO2: (0.01 + Math.random() * 0.01).toFixed(3), // SO2 소폭 증가
+        CO: (0.5 + Math.random() * 0.2).toFixed(3), // CO 수치 폭풍 시 상승
+        TEMP: (18 + Math.random() * 5).toFixed(1), // 기본 온도 값
+        HUMI: (70 + Math.random() * 10).toFixed(1), // 습도 증가
+        WINDsp: (3.0 + Math.random() * 2).toFixed(1), // 폭풍으로 인한 풍속 증가
+        FIRM: "1.0.0",
+        SEND: 1
+    };
+    console.log("Storm Scenario Data:", data);
+    return data;
+}
+
+// 기본적인 시간대별 더미 데이터 생성 함수
+function generateTimeBasedDummyAirData(devId, hour) {
+    const data = {
+        DEV_ID: devId,
+        PM10: (60 + Math.random() * 10).toFixed(1), 
+        PM25: (50 + Math.random() * 5).toFixed(1),  
+        SO2: (0.03 + Math.random() * 0.01).toFixed(3), 
+        NO2: (0.03 + Math.random() * 0.01).toFixed(3), 
+        O3: (0.05 + Math.random() * 0.01).toFixed(3),   
+        CO: (0.4 + Math.random() * 0.1).toFixed(3),    
+        VOCs: (0.005 + Math.random() * 0.001).toFixed(3),
+        H2S: (0.01 + Math.random() * 0.005).toFixed(3), 
+        NH3: (8 + Math.random() * 5).toFixed(1),    
+        OU: (0.005 + Math.random() * 0.003).toFixed(3),  
+        HCHO: (0.15 + Math.random() * 0.05).toFixed(3),
+        TEMP: (25 + Math.random() * 5).toFixed(1),  
+        HUMI: (55 + Math.random() * 10).toFixed(1), 
+        WINsp: (2.0 + Math.random() * 1).toFixed(1), 
+        WINdir: (Math.random() * 360).toFixed(1),           
+        BATT: (12.0 + Math.random() * 0.5).toFixed(1), 
+        FIRM: "1.0.0",
+        SEND: 1
+    };
+    console.log("Time-based Dummy Air Data:", data);
+    return data;
+}
+
+// 트리거 시나리오 실행 예시
+const devId = 1;
+const hour = 9; // 오전 9시 
+const dayOfWeek = 3; // 수요일 
+const event = 'fishing_boat'; // 어선 활동
+
+// 트리거 함수를 호출하여 데이터를 생성 
+const airData = triggerScenario(devId, hour, dayOfWeek, event);
+console.log('Generated Air Data:', airData);
