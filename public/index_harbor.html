@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>선박 시뮬레이션</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <style>
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // 지도를 초기화하고 구룡포 항 근처에 설정
+    const map = L.map("map").setView([35.989301, 129.559683], 14);
+
+    // OpenStreetMap 타일 레이어를 추가
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
+
+    // 구룡포 항 주변 다각형 정의
+    const harborPolygon = L.polygon([
+      [35.989301, 129.559683], [35.990568, 129.557613], [35.990018, 129.55592],
+      [35.989333, 129.556572], [35.98877, 129.555796], [35.989203, 129.555154],
+      [35.987217, 129.552773], [35.985626, 129.552162], [35.983288, 129.555102],
+      [35.984317, 129.558122], [35.985868, 129.559914], [35.986041, 129.560725],
+      [35.985365, 129.561041], [35.983894, 129.559052], [35.981223, 129.557145],
+      [35.979266, 129.555846], [35.979584, 129.55316], [35.975212, 129.553949],
+      [35.968083, 129.556266], [35.965116, 129.5669], [35.988957, 129.572315],
+      [35.988819, 129.561302], [35.986642, 129.558267], [35.985553, 129.55833],
+      [35.985502, 129.55761], [35.987199, 129.556984], [35.989301, 129.559683]
+    ]).addTo(map);
+
+    // 선박 마커와 경로를 저장할 객체
+    const vesselMarkers = {};
+    const vesselPaths = {}; // 각 선박의 이동 경로를 저장하는 객체
+
+    // 서버와 소켓 연결
+    const socket = io();
+
+    // 서버에서 실시간으로 선박 데이터를 수신
+    socket.on("vesselData", (vesselData) => {
+      const { id, lati, longi, speed, course } = vesselData;
+
+      // 이동 경로 업데이트
+      if (!vesselPaths[id]) {
+        vesselPaths[id] = [];
+      }
+      vesselPaths[id].push([lati, longi]); // 이동한 경로 추가
+
+      // 이미 해당 선박의 마커가 있으면 위치와 팝업 정보 업데이트
+      if (vesselMarkers[id]) {
+        vesselMarkers[id].setLatLng([lati, longi])
+          .bindPopup(
+            `<b>선박 ID:</b> ${id}<br><b>속도:</b> ${speed} km/h<br><b>방향:</b> ${course}°`
+          );
+
+        // 기존 경로를 지도에서 업데이트
+        const path = vesselPaths[id];
+        const polyline = L.polyline(path, { color: 'blue' });
+        polyline.addTo(map);
+      } else {
+        // 새로운 선박의 경우, 마커 생성 후 지도에 추가
+        const marker = L.marker([lati, longi])
+          .bindPopup(
+            `<b>선박 ID:</b> ${id}<br><b>속도:</b> ${speed} km/h<br><b>방향:</b> ${course}°`
+          )
+          .addTo(map);
+        vesselMarkers[id] = marker;
+
+        // 선박의 이동 경로 초기화
+        vesselPaths[id].push([lati, longi]);
+      }
+
+      // 경로 시각화
+      visualizePath(id);
+    });
+
+    // 경로 시각화 함수
+    function visualizePath(id) {
+      if (vesselPaths[id] && vesselPaths[id].length > 0) {
+        const path = vesselPaths[id];
+        const polyline = L.polyline(path, { color: 'blue', weight: 3 });
+        polyline.addTo(map);
+      }
+    }
+  </script>
+</body>
+</html>

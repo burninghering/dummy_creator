@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Leaflet Map with Polygon</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Leaflet CSS 파일 -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+    <style>
+        #map {
+            height: 600px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>구룡포항 주변 다각형 표시</h1>
+    <div id="map"></div>
+
+    <!-- Leaflet JS 파일 -->
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <script>
+        // Leaflet 지도를 생성하고 중심 좌표와 줌 레벨 설정
+        var map = L.map('map').setView([35.987072, 129.557047], 14);
+
+        // OpenStreetMap 타일 레이어 추가
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // 다각형 좌표 배열
+        var polygonCoordinates = [
+            [35.989301, 129.559683], //1
+            [35.990568, 129.557613], //2
+            [35.990018, 129.555920], //3
+            [35.989333, 129.556572], //4
+            [35.988770, 129.555796], //5
+            [35.989203, 129.555154], //6
+            [35.987217, 129.552773], //7
+            [35.985626, 129.552162], //8
+            [35.983288, 129.555102], //9
+            [35.984317, 129.558122],
+            [35.985868,129.559914],
+            [35.986041, 129.560725], 
+            [35.985365,129.561041],
+            [35.983894, 129.559052], 
+            [35.981223,129.557145],
+            [35.979266, 129.555846], 
+            [35.979584,129.553160],
+            [35.975212,129.553949],
+            [35.968083,129.556266],
+            [35.965116, 129.566900], 
+            [35.988957, 129.572315], 
+            [35.988819, 129.561302], 
+            [35.986642, 129.558267], 
+            [35.985553, 129.558330], 
+            [35.985502, 129.557610], 
+            [35.987199, 129.556984], 
+            [35.989301, 129.559683] 
+        ];
+
+        // 다각형을 지도에 추가
+        var polygon = L.polygon(polygonCoordinates, {
+            color: 'blue', // 다각형 색상
+            fillColor: '#3388ff', // 다각형 내부 색상
+            fillOpacity: 0.5 // 다각형 내부 불투명도
+        }).addTo(map);
+
+        // 다각형 클릭 시 팝업 메시지 표시
+        polygon.bindPopup("구룡포항 주변 다각형입니다.");
+    </script>
+
+</body>
+</html>
