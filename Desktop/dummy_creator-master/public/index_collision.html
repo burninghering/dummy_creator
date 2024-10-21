@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vessel Simulation</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        #map {
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // 지도를 초기화하고 구룡포항 중심으로 설정
+        var map = L.map('map').setView([35.985, 129.56], 14);
+
+        // OpenStreetMap 타일 레이어 추가
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // 다각형(바다 영역과 항구 영역)을 그리기
+        var userDefinedPolygon = L.polygon([
+            [35.989301, 129.559683],
+            [35.990568, 129.557613],
+            [35.990018, 129.55592],
+            [35.989333, 129.556572],
+            [35.98877, 129.555796],
+            [35.989203, 129.555154],
+            [35.987217, 129.552773],
+            [35.985626, 129.552162],
+            [35.983288, 129.555102],
+            [35.984317, 129.558122],
+            [35.985868, 129.559914],
+            [35.986041, 129.560725],
+            [35.985365, 129.561041],
+            [35.983894, 129.559052],
+            [35.981223, 129.557145],
+            [35.979266, 129.555846],
+            [35.979584, 129.55316],
+            [35.975212, 129.553949],
+            [35.968083, 129.556266],
+            [35.965116, 129.5669],
+            [35.988957, 129.572315],
+            [35.988819, 129.561302],
+            [35.986642, 129.558267],
+            [35.985553, 129.55833],
+            [35.985502, 129.55761],
+            [35.987199, 129.556984],
+            [35.989301, 129.559683]
+        ], {color: 'blue'}).addTo(map).bindPopup("Sea Boundary");
+
+        var harborPolygon = L.polygon([
+            [35.989301, 129.559683],
+            [35.990568, 129.557613],
+            [35.990018, 129.55592],
+            [35.989333, 129.556572],
+            [35.98877, 129.555796],
+            [35.989203, 129.555154],
+            [35.987217, 129.552773],
+            [35.985626, 129.552162],
+            [35.9849838,129.553464]
+        ], {color: 'green'}).addTo(map).bindPopup("Harbor Boundary");
+
+        // 선박들의 마커 객체와 경로를 저장하는 객체
+        var vesselMarkers = {};
+        var vesselPaths = {};
+
+        // 랜덤 색상을 생성하는 함수 (선박 ID 기반)
+        function getRandomColor(vesselId) {
+            const letters = '0123456789ABCDEF';
+            let color = '#';
+            for (let i = 0; i < 6; i++) {
+                color += letters[Math.floor((vesselId * (i + 1)) % 16)];
+            }
+            return color;
+        }
+
+        // Socket.io 연결
+        var socket = io();
+
+        // 서버로부터 선박 데이터를 수신
+        socket.on('vesselData', function (data) {
+            console.log(data);  // 서버로부터 수신한 데이터를 로그로 출력하여 확인
+
+            var vesselId = data.id;
+            var lat = parseFloat(data.lati);
+            var lon = parseFloat(data.longi);
+
+            // 선박 ID 기반으로 경로의 색상을 결정
+            var pathColor = getRandomColor(vesselId);
+
+            // 기존에 마커가 있으면 위치를 업데이트, 없으면 새로운 동그란 마커 추가
+            if (vesselMarkers[vesselId]) {
+                vesselMarkers[vesselId].setLatLng([lat, lon]);
+                // 경로에 새로운 좌표 추가
+                vesselPaths[vesselId].addLatLng([lat, lon]);
+            } else {
+                // 동그란 마커 추가
+                vesselMarkers[vesselId] = L.circleMarker([lat, lon], {
+                    radius: 5, // 마커 크기
+                    color: pathColor,
+                    fillColor: '#f03',
+                    fillOpacity: 0.7
+                }).addTo(map).bindPopup('Vessel ID: ' + vesselId);
+
+                // 새로운 경로 추가, 각 선박마다 다른 색상 적용
+                vesselPaths[vesselId] = L.polyline([[lat, lon]], { color: pathColor }).addTo(map);
+            }
+        });
+    </script>
+</body>
+</html>
