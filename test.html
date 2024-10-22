@@ -1,53 +1,132 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>선박 시뮬레이션</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-  <style>
-    #map {
-      height: 100vh;
-      width: 100%;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leaflet 경로 시각화</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        #map {
+            height: 600px;
+        }
+    </style>
 </head>
 <body>
-  <div id="map"></div>
 
-  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-  <script src="/socket.io/socket.io.js"></script>
-  <script>
-    // 지도를 초기화하고 구룡포 항 근처에 설정
-    const map = L.map("map").setView([35.989301, 129.559683], 14);
+<div id="map"></div>
 
-    // OpenStreetMap 타일 레이어를 추가
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 18,
-      attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script>
+    // 2. Leaflet 지도 생성
+    const map = L.map('map').setView([35.989301, 129.559683], 13); // 중심 좌표 설정
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
 
-    // 미리 설정된 경로 좌표
-    const predefinedPath = [
-      [35.989426, 129.558305],
-      [35.987844, 129.556101],
-      [35.986264, 129.555178],
-      [35.984909, 129.557946],
-      [35.987171, 129.560444],
-      [35.98332, 129.566125],
-      [35.978471, 129.569019],
+    // 3. 경로 데이터를 배열로 정의
+    const predefinedPaths = [
+      [
+        [35.989426, 129.558305],
+        [35.987844, 129.556101],
+        [35.986264, 129.555178],
+        [35.984909, 129.557946],
+        [35.987171, 129.560444],
+        [35.98332, 129.566125],
+        [35.978471, 129.569019],
+      ],
+      [
+        [35.989981, 129.5564447],
+        [35.989199, 129.557105],
+        [35.98787, 129.555715],
+        [35.985365, 129.554751],
+        [35.984177, 129.555912],
+        [35.986139, 129.559523],
+        [35.986901, 129.562615],
+        [35.978373, 129.560081],
+        [35.971042, 129.566363],
+      ],
+      [
+        [35.990517, 129.558129],
+        [35.985469, 129.554454],
+        [35.984271, 129.55596],
+        [35.986181, 129.559418],
+        [35.986573, 129.562173],
+        [35.979076, 129.562231],
+      ],
+      [
+        [35.98902, 129.555172],
+        [35.984441, 129.556598],
+        [35.987596, 129.561817],
+        [35.981358, 129.568331],
+        [35.97732, 129.568349],
+        [35.974137, 129.562106],
+      ],
+      [
+        [35.988134, 129.554185],
+        [35.984586, 129.557288],
+        [35.987725, 129.559977],
+        [35.98295, 129.562373],
+        [35.976438, 129.560245],
+      ],
+      [
+        [35.987518, 129.553484],
+        [35.985298, 129.557682],
+        [35.985773, 129.559098],
+        [35.987931, 129.560208],
+        [35.984692, 129.564456],
+        [35.977231, 129.56402],
+      ],
+      [
+        [35.986371, 129.552942],
+        [35.984093, 129.555143],
+        [35.986278, 129.560771],
+        [35.987364, 129.566799],
+      ],
+      [
+        [35.984851, 129.553816],
+        [35.985381, 129.558574],
+        [35.986278, 129.560771],
+        [35.986278, 129.560771]
+        [35.984301, 129.568719],
+      ],
+      [
+        [35.990242, 129.557083],
+        [35.988871, 129.557718],
+        [35.986371, 129.555305],
+        [35.98476, 129.557866],
+        [35.986555, 129.558693],
+        [35.986546, 129.562407],
+        [35.985346, 129.567703],
+        [35.980803, 129.569541],
+        [35.974975, 129.569033],
+      ],
+      [
+        [35.988894, 129.556351],
+        [35.984546, 129.557132],
+        [35.986362, 129.559291],
+        [35.986734, 129.562407],
+        [35.981088, 129.563551],
+      ],
     ];
 
-    // 경로를 선으로 이어서 지도에 추가
-    const polyline = L.polyline(predefinedPath, { color: 'blue' }).addTo(map);
+    // 4. 서로 다른 색상 배열 정의
+    const colors = ['red', 'green', 'blue', 'orange', 'purple', 'brown', 'pink', 'yellow', 'cyan', 'magenta'];
 
-    // 경로의 각 점에 마커 추가
-    predefinedPath.forEach((point) => {
-      L.marker(point).addTo(map);
+    // 5. 경로들을 지도에 시각화하고, 각 경로에 번호 추가
+    predefinedPaths.forEach((path, index) => {
+      // 각 경로를 서로 다른 색상으로 그리기
+      L.polyline(path, {color: colors[index % colors.length]}).addTo(map);
+
+      // 경로의 중간 좌표 찾기 (길이가 짝수면 가운데에 가까운 좌표)
+      const midPoint = path[Math.floor(path.length / 2)];
+
+      // 경로 번호를 지도에 마커로 추가하고 툴팁으로 경로 번호를 표시
+      L.circleMarker(midPoint, {radius: 5, color: 'black'})
+        .addTo(map)
+        .bindTooltip(`경로 ${index + 1}`, {permanent: true, direction: 'right'}); // 경로 번호 표시
     });
+</script>
 
-    // 지도에 경로 및 마커가 보이도록 확대
-    map.fitBounds(polyline.getBounds());
-  </script>
 </body>
 </html>
