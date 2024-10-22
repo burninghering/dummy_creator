@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>선박 시뮬레이션</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <style>
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // 지도를 초기화하고 구룡포 항 근처에 설정
+    const map = L.map("map").setView([35.989301, 129.559683], 14);
+
+    // OpenStreetMap 타일 레이어를 추가
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
+
+    // 미리 설정된 경로 좌표
+    const predefinedPath = [
+      [35.989426, 129.558305],
+      [35.987844, 129.556101],
+      [35.986264, 129.555178],
+      [35.984909, 129.557946],
+      [35.987171, 129.560444],
+      [35.98332, 129.566125],
+      [35.978471, 129.569019],
+    ];
+
+    // 경로를 선으로 이어서 지도에 추가
+    const polyline = L.polyline(predefinedPath, { color: 'blue' }).addTo(map);
+
+    // 경로의 각 점에 마커 추가
+    predefinedPath.forEach((point) => {
+      L.marker(point).addTo(map);
+    });
+
+    // 지도에 경로 및 마커가 보이도록 확대
+    map.fitBounds(polyline.getBounds());
+  </script>
+</body>
+</html>
