@@ -16,7 +16,7 @@ const scenarioMap = {
   default: 0,
 }
 
-// 데이터 저장 함수 수정
+// 데이터 저장 함수
 async function SaveScenarioAirData(devId, senId, sensorValue, scenario) {
   const connection = await pool.getConnection()
   try {

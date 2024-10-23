@@ -35,23 +35,10 @@ connection.connect((err) => {
 
 let vesselState = {} // 각 선박의 상태를 저장하는 객체
 let collisionTriggered = false // 30초 후 충돌 발생 플래그
+let collisionOccurred = false // 충돌이 이미 발생했는지 여부
 const safeDistance = 100 // 충돌 감지 거리 (미터)
-
-// 두 점(위도, 경도) 사이의 거리를 계산하는 함수
-function calculateDistance(lat1, lon1, lat2, lon2) {
-  return Math.sqrt(Math.pow(lat2 - lat1, 2) + Math.pow(lon2 - lon1, 2))
-}
-
-// 날짜를 'YYYY-MM-DD HH:MM:SS' 형식으로 변환하는 함수
-function formatDateToYYYYMMDDHHMMSS(date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const day = String(date.getDate()).padStart(2, "0")
-  const hours = String(date.getHours()).padStart(2, "0")
-  const minutes = String(date.getMinutes()).padStart(2, "0")
-  const seconds = String(date.getSeconds()).padStart(2, "0")
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
-}
+const collisionVessel1 = 1 // 충돌할 첫 번째 선박 ID
+const collisionVessel2 = 2 // 충돌할 두 번째 선박 ID
 
 // Haversine 공식을 이용한 두 점 사이의 거리 계산 함수 (미터 단위)
 function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
@@ -71,8 +58,9 @@ function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
 }
 
 // 두 배 충돌 여부 확인 (30초 후에만 충돌 가능, Haversine 공식을 사용)
-function checkTwoVesselsCollision(vesselId1, vesselId2, safeDistance) {
-  if (!collisionTriggered) return false // 30초 후에만 충돌 발생
+function checkTwoVesselsCollision(vesselId1, vesselId2) {
+  // 이미 충돌이 발생했으면 더 이상 확인하지 않음
+  if (!collisionTriggered || collisionOccurred) return false
 
   const vessel1 = vesselState[vesselId1]
   const vessel2 = vesselState[vesselId2]
@@ -88,6 +76,8 @@ function checkTwoVesselsCollision(vesselId1, vesselId2, safeDistance) {
 
 // 선박 충돌 처리
 function handleCollision(vesselId1, vesselId2) {
+  if (collisionOccurred) return // 충돌이 이미 발생했으면 처리하지 않음
+
   // 충돌한 두 선박의 속도를 0으로 설정하여 멈추도록 함
   vesselState[vesselId1].speed = 0
   vesselState[vesselId2].speed = 0
@@ -96,44 +86,16 @@ function handleCollision(vesselId1, vesselId2) {
   io.emit("collisionDetected", { vessel1: vesselId1, vessel2: vesselId2 })
 
   console.log(`충돌 발생: 선박 ${vesselId1}와 선박 ${vesselId2}`)
+  collisionOccurred = true // 충돌 발생 플래그 설정
 }
 
-// 충돌 여부를 확인하는 함수 (모든 선박에 대해 반복)
-function checkAllVesselsForCollision() {
-  const vesselIds = Object.keys(vesselState)
+// 충돌 여부를 확인하는 함수 (두 선박에 대해서만 충돌 확인)
+function checkCollisionBetweenTwoVessels() {
+  if (!vesselState[collisionVessel1] || !vesselState[collisionVessel2]) return
 
-  for (let i = 0; i < vesselIds.length; i++) {
-    for (let j = i + 1; j < vesselIds.length; j++) {
-      const vesselId1 = vesselIds[i]
-      const vesselId2 = vesselIds[j]
-
-      const vessel1 = vesselState[vesselId1]
-      const vessel2 = vesselState[vesselId2]
-
-      if (!vessel1 || !vessel2) continue
-
-      const distance = calculateHaversineDistance(
-        vessel1.lati,
-        vessel1.longi,
-        vessel2.lati,
-        vessel2.longi
-      )
-
-      // 안전 거리 내에 있는 경우 충돌 발생
-      if (distance < safeDistance) {
-        console.log(`선박 ${vesselId1}와 선박 ${vesselId2}가 충돌했습니다!`)
-
-        // 충돌한 선박의 속도를 0으로 설정하여 멈추게 함
-        vesselState[vesselId1].speed = 0
-        vesselState[vesselId2].speed = 0
-
-        // 마커 색상을 빨간색으로 변경
-        io.emit("collisionDetected", { vessel1: vesselId1, vessel2: vesselId2 })
-
-        // 충돌이 발생했으므로 추가 충돌 확인을 중단
-        return
-      }
-    }
+  // 두 배 사이의 충돌 여부 확인
+  if (checkTwoVesselsCollision(collisionVessel1, collisionVessel2)) {
+    handleCollision(collisionVessel1, collisionVessel2)
   }
 }
 
@@ -198,7 +160,7 @@ function generateCurvedVesselData(devId, polygon) {
   // MySQL에 데이터 저장
   for (let senId = 1; senId <= 6; senId++) {
     const sql = `
-      INSERT INTO example_vessel_log_data_scenario (log_datetime, DEV_ID, SEN_ID, sen_value, ALT_ID)
+      INSERT INTO example_vessel_log_data_collision (log_datetime, DEV_ID, SEN_ID, sen_value, ALT_ID)
       VALUES (?, ?, ?, ?, ?)
     `
     const params = [
@@ -303,7 +265,14 @@ const userDefinedPolygon = [
 
 // 시뮬레이션 시작 함수
 function startVesselSimulation() {
-  const safeDistance = 1 // 충돌을 감지할 최소 거리 (약 50m)
+  const safeDistance = 100 // 충돌을 감지할 최소 거리 (100m)
+
+  // 30초 후에 충돌 감지를 활성화
+  setTimeout(() => {
+    collisionTriggered = true
+    console.log("30초 후 충돌 감지 활성화됨.")
+  }, 30000)
+
   setInterval(() => {
     for (let i = 1; i <= 100; i++) {
       const vesselData = generateCurvedVesselData(i, userDefinedPolygon)
@@ -311,8 +280,8 @@ function startVesselSimulation() {
       io.emit("vesselData", vesselData)
     }
 
-    // 모든 선박에 대해 충돌 감지
-    checkAllVesselsForCollision(safeDistance)
+    // 두 선박 간 충돌 감지
+    checkCollisionBetweenTwoVessels()
   }, 1000) // 1초마다 실행
 }
 

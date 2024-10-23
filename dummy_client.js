@@ -464,8 +464,8 @@ function generateCurvedVesselData(devId, polygon) {
     rcv_datetime: formatDateToYYYYMMDDHHMMSS(
       new Date(currentDate.getTime() - (Math.random() * 2000 + 1000))
     ),
-    lati: state.lati.toFixed(5),
-    longi: state.longi.toFixed(5),
+    lati: state.lati.toFixed(7),
+    longi: state.longi.toFixed(7),
     speed: state.speed.toFixed(2),
     course: state.course.toFixed(0),
     azimuth: (50 + Math.floor(Math.random() * 10)).toFixed(0),

@@ -15,10 +15,23 @@
       height: 100vh;
       width: 100%;
     }
+
+    /* 충돌 경고 메시지 스타일 */
+    #collisionAlert {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      padding: 10px;
+      background-color: red;
+      color: white;
+      font-weight: bold;
+      display: none; /* 기본적으로 숨김 */
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <div id="collisionAlert">⚠️ 충돌 발생!</div>
 
   <script>
     // 맵 초기화
@@ -74,6 +87,7 @@
     // 서버로부터 실시간 데이터 수신
     const socket = io();
 
+    // 선박 데이터 수신 처리
     socket.on("vesselData", (data) => {
       const { id, lati, longi, speed, course, azimuth } = data;
 
@@ -99,6 +113,42 @@
         vesselMarkers[id] = marker;
         vesselPaths[id] = path;
       }
+    });
+
+    // 충돌 데이터 수신 처리
+    socket.on("collisionDetected", (collisionData) => {
+      const { vessel1, vessel2 } = collisionData;
+
+      // 충돌한 선박의 마커를 빨간색으로 변경
+      if (vesselMarkers[vessel1]) {
+        vesselMarkers[vessel1].setIcon(
+          L.icon({
+            iconUrl: "https://example.com/red_marker.png", // 빨간색 마커 아이콘 경로
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+          })
+        );
+      }
+
+      if (vesselMarkers[vessel2]) {
+        vesselMarkers[vessel2].setIcon(
+          L.icon({
+            iconUrl: "https://example.com/red_marker.png", // 빨간색 마커 아이콘 경로
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+          })
+        );
+      }
+
+      // 충돌 경고 메시지를 화면에 표시
+      const collisionAlert = document.getElementById("collisionAlert");
+      collisionAlert.style.display = "block";
+      collisionAlert.innerHTML = `⚠️ 충돌 발생: 선박 ${vessel1}와 선박 ${vessel2}가 충돌했습니다!`;
+
+      // 5초 후에 경고 메시지를 숨김
+      setTimeout(() => {
+        collisionAlert.style.display = "none";
+      }, 5000);
     });
   </script>
 </body>

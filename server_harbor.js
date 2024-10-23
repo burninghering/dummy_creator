@@ -266,7 +266,7 @@ function generateVesselDataAlongPath(devId) {
   // MySQL에 데이터 저장
   for (let senId = 1; senId <= 6; senId++) {
     const sql = `
-      INSERT INTO example_vessel_log_data_scenario (log_datetime, DEV_ID, SEN_ID, sen_value, ALT_ID)
+      INSERT INTO example_vessel_log_data_harbor (log_datetime, DEV_ID, SEN_ID, sen_value, ALT_ID)
       VALUES (?, ?, ?, ?, ?)
     `
     const params = [
