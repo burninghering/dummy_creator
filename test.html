@@ -1,0 +1,257 @@
+const mysql = require("mysql");
+const express = require("express");
+const http = require("http");
+const socketIo = require("socket.io");
+
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server);
+
+app.use(express.static(__dirname + "/public"));
+
+app.get("/", (req, res) => {
+  res.sendFile(__dirname + "/public/index_collision.html");
+});
+
+const connection = mysql.createConnection({
+  host: "127.0.0.1",
+  user: "root",
+  password: "1234",
+  database: "netro_data_platform",
+});
+
+connection.connect((err) => {
+  if (err) {
+    console.error("데이터베이스 연결 실패:", err);
+    return;
+  }
+  console.log("데이터베이스에 성공적으로 연결되었습니다.");
+});
+
+let vesselState = {}; // 각 선박의 상태를 저장하는 객체
+let collisionTriggered = false; // 충돌 감지 활성화 여부
+let collisionOccurred = false; // 충돌 발생 여부
+const safeDistance = 100; // 충돌 감지 거리 (미터)
+const collisionVessel1 = 1; // 충돌할 첫 번째 선박 ID
+const collisionVessel2 = 2; // 충돌할 두 번째 선박 ID
+
+function formatDateToYYYYMMDDHHMMSS(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
+function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371e3;
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  const distance = R * c;
+  return distance;
+}
+
+function checkTwoVesselsCollision(vesselId1, vesselId2) {
+  if (!collisionTriggered || collisionOccurred) return false;
+
+  const vessel1 = vesselState[vesselId1];
+  const vessel2 = vesselState[vesselId2];
+
+  const distance = calculateHaversineDistance(
+    vessel1.lati,
+    vessel1.longi,
+    vessel2.lati,
+    vessel2.longi
+  );
+  return distance < safeDistance;
+}
+
+function handleCollision(vesselId1, vesselId2) {
+  if (collisionOccurred) return;
+
+  vesselState[vesselId1].speed = 0;
+  vesselState[vesselId2].speed = 0;
+
+  io.emit("collisionDetected", { vessel1: vesselId1, vessel2: vesselId2 });
+
+  console.log(`충돌 발생: 선박 ${vesselId1}와 선박 ${vesselId2}`);
+  collisionOccurred = true;
+}
+
+function generateCurvedVesselData(devId, polygon) {
+  const currentDate = new Date();
+  const logDatetime = formatDateToYYYYMMDDHHMMSS(currentDate);
+  const rcvDatetime = formatDateToYYYYMMDDHHMMSS(
+    new Date(currentDate.getTime() - (Math.random() * 2000 + 1000))
+  );
+
+  if (!vesselState[devId]) {
+    let { lati, longi } = getRandomCoordinateWithinPolygon(polygon);
+    vesselState[devId] = {
+      lati: lati,
+      longi: longi,
+      speed: 1 + Math.random() * 3,
+      course: Math.floor(Math.random() * 360),
+      azimuth: (50 + Math.floor(Math.random() * 10)).toFixed(0),
+    };
+  }
+
+  let state = vesselState[devId];
+  const speedFactor = state.speed / 100000;
+  const curveFactor = 0.001;
+
+  let newLati = state.lati + speedFactor * Math.cos((state.course * Math.PI) / 180);
+  let newLongi = state.longi + speedFactor * Math.sin((state.course * Math.PI) / 180) + curveFactor * 0.000001;
+
+  if (isPointInPolygon([newLati, newLongi], polygon)) {
+    state.lati = newLati;
+    state.longi = newLongi;
+  } else {
+    state.course = (state.course + Math.floor(Math.random() * 180 + 90)) % 360;
+  }
+
+  state.speed = Math.max(1, Math.min(4, state.speed + (Math.random() * 2 - 1)));
+  state.course = (state.course + (Math.random() * 20 - 10)) % 360;
+
+  const sensorValues = {
+    1: rcvDatetime,
+    2: state.lati.toFixed(5),
+    3: state.longi.toFixed(5),
+    4: state.speed.toFixed(2),
+    5: state.course.toFixed(0),
+    6: state.azimuth,
+  };
+
+  for (let senId = 1; senId <= 6; senId++) {
+    const sql = `
+      INSERT INTO example_vessel_log_data_collision (log_datetime, DEV_ID, SEN_ID, sen_value, ALT_ID)
+      VALUES (?, ?, ?, ?, ?)
+    `;
+    const params = [
+      logDatetime,
+      devId,
+      senId,
+      sensorValues[senId],
+      null,
+    ];
+
+    connection.query(sql, params, (err, result) => {
+      if (err) {
+        console.error("데이터베이스에 데이터를 삽입하는 중 오류 발생:", err);
+      } else {
+        console.log(`DEV_ID ${devId}의 센서 ${senId} 데이터가 성공적으로 저장되었습니다.`);
+      }
+    });
+  }
+
+  return {
+    log_datetime: logDatetime,
+    rcv_datetime: rcvDatetime,
+    id: devId,
+    lati: sensorValues[2],
+    longi: sensorValues[3],
+    speed: sensorValues[4],
+    course: sensorValues[5],
+    azimuth: sensorValues[6],
+  };
+}
+
+function getRandomCoordinateWithinPolygon(polygon) {
+  let minLati = Math.min(...polygon.map((point) => point[0]));
+  let maxLati = Math.max(...polygon.map((point) => point[0]));
+  let minLongi = Math.min(...polygon.map((point) => point[1]));
+  let maxLongi = Math.max(...polygon.map((point) => point[1]));
+
+  let lati, longi;
+  do {
+    lati = minLati + Math.random() * (maxLati - minLati);
+    longi = minLongi + Math.random() * (maxLongi - minLongi);
+  } while (!isPointInPolygon([lati, longi], polygon));
+
+  return { lati, longi };
+}
+
+function isPointInPolygon(point, polygon) {
+  let x = point[0],
+    y = point[1];
+  let inside = false;
+
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    let xi = polygon[i][0],
+      yi = polygon[i][1];
+    let xj = polygon[j][0],
+      yj = polygon[j][1];
+
+    let intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+
+  return inside;
+}
+
+const userDefinedPolygon = [
+  [35.989301, 129.559683],
+  [35.990568, 129.557613],
+  [35.990018, 129.55592],
+  [35.989333, 129.556572],
+  [35.98877, 129.555796],
+  [35.989203, 129.555154],
+  [35.987217, 129.552773],
+  [35.985626, 129.552162],
+  [35.983288, 129.555102],
+  [35.984317, 129.558122],
+  [35.985868, 129.559914],
+  [35.986041, 129.560725],
+  [35.985365, 129.561041],
+  [35.983894, 129.559052],
+  [35.981223, 129.557145],
+  [35.979266, 129.555846],
+  [35.979584, 129.55316],
+  [35.975212, 129.553949],
+  [35.968083, 129.556266],
+  [35.965116, 129.5669],
+  [35.988957, 129.572315],
+  [35.988819, 129.561302],
+  [35.986642, 129.558267],
+  [35.985553, 129.55833],
+  [35.985502, 129.55761],
+  [35.987199, 129.556984],
+  [35.989301, 129.559683],
+];
+
+function startVesselSimulation() {
+  setTimeout(() => {
+    collisionTriggered = true;
+    console.log("30초 후 충돌 감지 활성화됨.");
+
+    vesselState[collisionVessel1].lati = vesselState[collisionVessel2].lati + 0.00001;
+    vesselState[collisionVessel1].longi = vesselState[collisionVessel2].longi + 0.00001;
+
+    console.log(`충돌 강제 설정: 선박 ${collisionVessel1}와 ${collisionVessel2}가 가까운 거리로 이동합니다.`);
+  }, 30000);
+
+  setInterval(() => {
+    for (let i = 1; i <= 100; i++) {
+      const vesselData = generateCurvedVesselData(i, userDefinedPolygon);
+      io.emit("vesselData", vesselData);
+    }
+
+    checkCollisionBetweenTwoVessels();
+  }, 1000);
+}
+
+startVesselSimulation();
+
+server.listen(3000, () => {
+  console.log("서버가 포트 3000에서 실행 중입니다.");
+});
