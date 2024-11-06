@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Harbor Vessel Simulation</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+  />
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+
+    /* 충돌 경고 메시지 스타일 */
+    #collisionAlert {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      padding: 10px;
+      background-color: red;
+      color: white;
+      font-weight: bold;
+      display: none; /* 기본적으로 숨김 */
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="collisionAlert">⚠️ 충돌 발생!</div>
+
+  <script>
+    // 맵 초기화
+    const map = L.map("map").setView([35.988957, 129.561302], 14); // 항구를 중심으로 설정
+
+    // OSM Tile Layer 추가
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+    }).addTo(map);
+
+    // 다각형의 좌표들 (구룡포항 영역)
+    const polygonCoordinates = [
+            [35.989301, 129.559683],
+            [35.990568, 129.557613],
+            [35.990018, 129.55592],
+            [35.989333, 129.556572],
+            [35.98877, 129.555796],
+            [35.989203, 129.555154],
+            [35.987217, 129.552773],
+            [35.985626, 129.552162],
+            [35.983288, 129.555102],
+            [35.986041, 129.560725],
+            [35.983321, 129.559852],
+            [35.978506, 129.553306],
+            [35.969736, 129.555431],
+            [35.965728, 129.581481],
+            [35.986439, 129.588861],
+
+            [35.988819, 129.561302],
+            [35.986642, 129.558267],
+            [35.985553, 129.55833],
+            [35.985502, 129.55761],
+            [35.987199, 129.556984],
+            [35.987072, 129.557047],
+            [35.989301, 129.559683], // 다각형 닫기
+        ];
+
+    // 다각형 표시
+    const polygon = L.polygon(polygonCoordinates, { color: "blue" }).addTo(map);
+
+    // 항구 위치 (목적지)
+    const harborMarker = L.marker([35.988957, 129.561302]).addTo(map);
+    harborMarker.bindPopup("Harbor (목적지)").openPopup();
+
+    // 선박 마커와 경로를 저장하는 객체
+    const vesselMarkers = {};
+    const vesselPaths = {};
+
+    // 서버로부터 실시간 데이터 수신
+    const socket = io();
+
+    // 선박 데이터 수신 처리
+    socket.on("vesselData", (data) => {
+      const { id, lati, longi, speed, course, azimuth } = data;
+
+      // 선박이 이미 있는 경우, 마커와 경로 업데이트
+      if (vesselMarkers[id]) {
+        const marker = vesselMarkers[id];
+        const path = vesselPaths[id];
+
+        // 마커 위치 업데이트
+        marker.setLatLng([lati, longi]);
+
+        // 경로에 새로운 좌표 추가
+        path.addLatLng([lati, longi]);
+      } else {
+        // 새로운 선박의 경우, 마커와 경로 생성
+        const marker = L.marker([lati, longi]).addTo(map);
+        marker.bindPopup(`Vessel ID: ${id}`).openPopup();
+
+        // 경로를 저장할 Polyline 생성
+        const path = L.polyline([[lati, longi]], { color: "red" }).addTo(map);
+
+        // 마커와 경로 저장
+        vesselMarkers[id] = marker;
+        vesselPaths[id] = path;
+      }
+    });
+
+    // 충돌 데이터 수신 처리
+    socket.on("collisionDetected", (collisionData) => {
+      const { vessel1, vessel2 } = collisionData;
+
+      // 충돌한 선박의 마커를 빨간색으로 변경
+      if (vesselMarkers[vessel1]) {
+        vesselMarkers[vessel1].setIcon(
+          L.icon({
+            iconUrl: "https://example.com/red_marker.png", // 빨간색 마커 아이콘 경로
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+          })
+        );
+      }
+
+      if (vesselMarkers[vessel2]) {
+        vesselMarkers[vessel2].setIcon(
+          L.icon({
+            iconUrl: "https://example.com/red_marker.png", // 빨간색 마커 아이콘 경로
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+          })
+        );
+      }
+
+      // 충돌 경고 메시지를 화면에 표시
+      const collisionAlert = document.getElementById("collisionAlert");
+      collisionAlert.style.display = "block";
+      collisionAlert.innerHTML = `⚠️ 충돌 발생: 선박 ${vessel1}와 선박 ${vessel2}가 충돌했습니다!`;
+
+      // 5초 후에 경고 메시지를 숨김
+      setTimeout(() => {
+        collisionAlert.style.display = "none";
+      }, 5000);
+    });
+  </script>
+</body>
+</html>
