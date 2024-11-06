@@ -117,9 +117,7 @@ function calculateEmissions(T, t) {
   const concentrations = [0.05, 0.1, 0.02] // 예시 농도 배열 (C_i)
 
   // 고정된 변수들
-  const V = Math.random() * (10 - 1) + 1 // 풍속 (1~10 m/s 랜덤 값)
-
-  const additionalDockingTime = 1800 // 추가 정박 시간 (초, 예시 값)
+  const V = 3 // 풍속 (m/s, 예시 값)
 
   // 오염물질 개수
   const n = concentrations.length
@@ -127,11 +125,10 @@ function calculateEmissions(T, t) {
   // E_total 계산
   let E_total = 0
   for (let i = 0; i < n; i++) {
-    E_total += concentrations[i] * V * (t + additionalDockingTime) * T
+    E_total += concentrations[i] * V * t * T // t는 실제 정박 시간(초 단위)
   }
   return E_total
 }
-
 // 날짜를 KST로 변환하는 함수
 function toKST(date) {
   const offset = 9 * 60 * 60 * 1000 // 9시간을 밀리초로 변환
@@ -186,7 +183,6 @@ function formatToMySQLDate(date) {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }
 
-// simulatePortActivities 함수에서 배의 항구 활동 중 E_total 계산 및 total 업데이트
 // 배의 항구 활동 시뮬레이션 함수 수정
 function simulatePortActivities(ships) {
   setInterval(() => {
@@ -226,10 +222,10 @@ function simulatePortActivities(ships) {
         ship.CO2 = Math.max(0, ship.CO2 + co2Change) // CO2 값 갱신
 
         // 정박 시간 계산
-        const currentStayTime = Math.floor((now - ship.Arrival_Time) / 1000)
+        const currentStayTime = Math.floor((now - ship.Arrival_Time) / 1000) // 초 단위로 변환
 
         // E_total 계산 및 total 업데이트
-        const emissions = calculateEmissions(ship.Tonage, currentStayTime)
+        const emissions = calculateEmissions(ship.Tonage, currentStayTime) // currentStayTime을 이용
         ship.total += emissions
 
         // 최소 1분 동안은 항구에 머무름
