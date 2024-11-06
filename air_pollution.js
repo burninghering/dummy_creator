@@ -7,7 +7,6 @@ const pool = mysql.createPool({
   user: "root",
   password: "netro9888!",
   database: "netro_data_platform",
-  timezone: "local", // 로컬 시간대로 설정
 })
 
 // 미리 계산된 100대의 배 톤수 값 (204대 선박의 총 톤수 비율 기반)
@@ -23,7 +22,6 @@ const tonageValues = [
   12.77, 6.7, 10.74, 25.78, 124.02, 14.25, 6.02, 11.9, 25.78,
 ]
 
-// 배의 정보 초기화 함수
 function initializeShips(callback) {
   pool.query("SELECT * FROM air_pollution", (error, results) => {
     if (error) {
@@ -44,7 +42,7 @@ function initializeShips(callback) {
         Stay_Time: "00:00:00",
         Tonage: parseFloat(tonageValues[i].toFixed(2)), // 미리 계산된 톤수 값 사용
         status: "sea", // 초기 상태는 모두 바다에 떠 있는 상태로 설정
-        nextArrivalTime: null, // 입항 대기 시간 초기화
+        nextArrivalTime: null,
       }))
 
       ships.forEach((ship) => {
@@ -77,153 +75,237 @@ function initializeShips(callback) {
         )
       })
     } else {
-      // 데이터베이스에 값이 있으면 해당 값으로 ships 배열을 초기화
+      // 데이터베이스에 값이 있으면 해당 값으로 초기화
       ships = results.map((row) => ({
         ship_ID: row.ship_ID,
         CO2: row.CO2,
         cnt: row.cnt,
         total: row.total,
-        Arrival_Time: row.Arrival_Time ? new Date(row.Arrival_Time) : null,
-        Departure_Time: row.Departure_Time
-          ? new Date(row.Departure_Time)
+        Arrival_Time: row.Arrival_Time
+          ? new Date(
+              row.Arrival_Time.toLocaleString("en-US", {
+                timeZone: "Asia/Seoul",
+              })
+            )
           : null,
-        Stay_Time: row.stay_time || "00:00:00",
+        Departure_Time: row.Departure_Time
+          ? new Date(
+              row.Departure_Time.toLocaleString("en-US", {
+                timeZone: "Asia/Seoul",
+              })
+            )
+          : null,
+        Stay_Time: row.stay_time,
         Tonage: row.Tonage,
         status: row.status,
         nextArrivalTime: row.nextArrivalTime
-          ? new Date(row.nextArrivalTime)
-          : null, // DB에서 nextArrivalTime 복원
-        minStayTime: null, // 항구에 도착 후 새로 설정될 체류 시간
+          ? new Date(
+              row.nextArrivalTime.toLocaleString("en-US", {
+                timeZone: "Asia/Seoul",
+              })
+            )
+          : null,
       }))
-
-      console.log("Previous ship data loaded from database.")
     }
 
     callback(ships)
   })
 }
-
 // E_total 계산 함수
 function calculateEmissions(T, t) {
-  const concentrations = [0.05, 0.1, 0.02] // 예시 농도 배열
-  const V = Math.random() * (10 - 1) + 1 // 풍속
-  const additionalDockingTime = 1800 // 추가 정박 시간
+  // 각 오염물질의 농도 (배열로 설정)
+  const concentrations = [0.05, 0.1, 0.02] // 예시 농도 배열 (C_i)
+
+  // 고정된 변수들
+  const V = Math.random() * (10 - 1) + 1 // 풍속 (1~10 m/s 랜덤 값)
+
+  const additionalDockingTime = 1800 // 추가 정박 시간 (초, 예시 값)
+
+  // 오염물질 개수
+  const n = concentrations.length
+
+  // E_total 계산
   let E_total = 0
-  for (let i = 0; i < concentrations.length; i++) {
+  for (let i = 0; i < n; i++) {
     E_total += concentrations[i] * V * (t + additionalDockingTime) * T
   }
   return E_total
 }
 
-// 시간을 HH:MM:SS 형식으로 변환하는 함수
+// 날짜를 KST로 변환하는 함수
+function toKST(date) {
+  const offset = 9 * 60 * 60 * 1000 // 9시간을 밀리초로 변환
+  return new Date(date.getTime() + offset)
+}
+
+// HH:MM:SS 형식의 시간을 초 단위로 변환하는 함수
+function timeStringToSeconds(timeString) {
+  const [hours, minutes, seconds] = timeString.split(":").map(Number)
+  return hours * 3600 + minutes * 60 + seconds
+}
+
+// 초 단위를 HH:MM:SS 형식의 문자열로 변환하는 함수
 function secondsToTimeString(seconds) {
   const hours = String(Math.floor(seconds / 3600)).padStart(2, "0")
   const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")
   const secs = String(seconds % 60).padStart(2, "0")
   return `${hours}:${minutes}:${secs}`
 }
+// E_total 계산 함수
+function calculateEmissions(T, t) {
+  // 각 오염물질의 농도 (배열로 설정)
+  const concentrations = [0.05, 0.1, 0.02] // 예시 농도 배열 (C_i)
 
+  // 고정된 변수들
+  const V = 3 // 풍속 (m/s, 예시 값)
+  const additionalDockingTime = 1800 // 추가 정박 시간 (초, 예시 값)
+
+  // 오염물질 개수
+  const n = concentrations.length
+
+  // E_total 계산
+  let E_total = 0
+  for (let i = 0; i < n; i++) {
+    E_total += concentrations[i] * V * (t + additionalDockingTime) * T
+  }
+  return E_total
+}
+
+// 날짜를 KST로 변환하고 MySQL이 요구하는 형식으로 문자열 반환하는 함수
+function formatToMySQLDate(date) {
+  const offset = 9 * 60 * 60 * 1000 // 9시간을 밀리초로 변환
+  const kstDate = new Date(date.getTime() + offset)
+
+  const year = kstDate.getFullYear()
+  const month = String(kstDate.getMonth() + 1).padStart(2, "0")
+  const day = String(kstDate.getDate()).padStart(2, "0")
+  const hours = String(kstDate.getHours()).padStart(2, "0")
+  const minutes = String(kstDate.getMinutes()).padStart(2, "0")
+  const seconds = String(kstDate.getSeconds()).padStart(2, "0")
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+}
+
+// simulatePortActivities 함수에서 배의 항구 활동 중 E_total 계산 및 total 업데이트
+// 배의 항구 활동 시뮬레이션 함수 수정
 function simulatePortActivities(ships) {
   setInterval(() => {
     ships.forEach((ship) => {
-      if (ship.status === "sea" && !ship.nextArrivalTime) {
+      const now = new Date()
+
+      // 배가 바다에 있고, nextArrivalTime이 설정된 경우 해당 시간에 도달하면 입항
+      if (
+        ship.status === "sea" &&
+        ship.nextArrivalTime &&
+        now >= ship.nextArrivalTime
+      ) {
         ship.status = "port"
         ship.Arrival_Time = new Date()
-        ship.minStayTime = Math.floor(Math.random() * (600 - 60) + 60)
+        ship.Departure_Time = null
+        console.log(`Ship ${ship.ship_ID} has arrived at the port again.`)
+        ship.nextArrivalTime = null
+      }
+
+      // 배가 한번도 항구에 도착한 적이 없는 경우
+      if (
+        ship.status === "sea" &&
+        !ship.Arrival_Time &&
+        !ship.nextArrivalTime
+      ) {
+        ship.status = "port"
+        ship.Arrival_Time = new Date()
         console.log(
           `Ship ${ship.ship_ID} has arrived at the port for the first time.`
         )
       }
 
-      if (
-        ship.status === "sea" &&
-        ship.nextArrivalTime &&
-        Date.now() >= ship.nextArrivalTime.getTime()
-      ) {
-        ship.status = "port"
-        ship.Arrival_Time = new Date()
-        ship.nextArrivalTime = null
-        ship.minStayTime = Math.floor(Math.random() * (600 - 60) + 60)
-        console.log(`Ship ${ship.ship_ID} has arrived at the port again.`)
-      }
-
+      // 배가 항구에 있을 때 CO2 배출량 업데이트 및 출항 조건 확인
       if (ship.status === "port") {
+        // CO2 배출량 계산 및 업데이트
         const co2Change = parseFloat((Math.random() * 10 - 5).toFixed(2))
+        ship.CO2 = Math.max(0, ship.CO2 + co2Change) // CO2 값 갱신
 
-        // 현재 정박 시간 계산 (초 단위)
-        const currentStayTime = Math.floor(
-          (new Date() - ship.Arrival_Time) / 1000
-        )
+        // 정박 시간 계산
+        const currentStayTime = Math.floor((now - ship.Arrival_Time) / 1000)
 
-        // 정박 시간이 3시간(10800초) 이상일 경우 CO2를 0으로 설정
-        if (currentStayTime >= 10800) {
-          ship.CO2 = 0
-        } else {
-          ship.CO2 = Math.max(0, ship.CO2 + co2Change)
-        }
+        // E_total 계산 및 total 업데이트
+        const emissions = calculateEmissions(ship.Tonage, currentStayTime)
+        ship.total += emissions
 
-        // 정박 시간이 최소 체류 시간을 초과하면 출항 처리
-        if (currentStayTime >= ship.minStayTime) {
+        // 최소 1분 동안은 항구에 머무름
+        const minStayTime = Math.floor(Math.random() * (600 - 60) + 60) // 1분~10분 랜덤
+
+        if (currentStayTime >= minStayTime) {
           ship.status = "sea"
           ship.Departure_Time = new Date()
-          const stayTimeSeconds = Math.floor(
-            (ship.Departure_Time - ship.Arrival_Time) / 1000
-          )
-          ship.Stay_Time = secondsToTimeString(stayTimeSeconds)
+          ship.Stay_Time = secondsToTimeString(currentStayTime)
 
-          // 수정된 CO2 값을 기반으로 total 계산
-          ship.total = calculateEmissions(ship.Tonage, stayTimeSeconds)
-
-          const minWaitTime = 10 * 60 * 1000 // 최소 10분 대기 시간
-          const maxWaitTime = 30 * 60 * 1000 // 최대 30분 대기 시간
-          const randomWaitTime = Math.floor(
-            Math.random() * (maxWaitTime - minWaitTime) + minWaitTime
+          // 다음 입항 시간을 10분에서 30분 사이의 랜덤 값으로 설정
+          const minWaitTime = 10 * 60 * 1000 // 10분 (밀리초)
+          const maxWaitTime = 30 * 60 * 1000 // 30분 (밀리초)
+          ship.nextArrivalTime = new Date(
+            now.getTime() +
+              Math.floor(
+                Math.random() * (maxWaitTime - minWaitTime) + minWaitTime
+              )
           )
-          ship.nextArrivalTime = new Date(Date.now() + randomWaitTime)
 
           console.log(
             `Ship ${
               ship.ship_ID
-            } will attempt to arrive again at ${ship.nextArrivalTime.toLocaleString()}`
+            } will attempt to arrive again at ${ship.nextArrivalTime.toLocaleString(
+              "ko-KR",
+              { timeZone: "Asia/Seoul" }
+            )}`
           )
         }
-
-        // MySQL에 데이터 업데이트
-        pool.query(
-          `UPDATE air_pollution SET CO2 = ?, cnt = ?, total = ?, Arrival_Time = ?, Departure_Time = ?, stay_time = ?, Tonage = ?, status = ?, nextArrivalTime = ? WHERE ship_ID = ?`,
-          [
-            ship.CO2,
-            ship.cnt,
-            ship.total,
-            ship.Arrival_Time,
-            ship.Departure_Time,
-            ship.Stay_Time,
-            ship.Tonage,
-            ship.status,
-            ship.nextArrivalTime
-              ? ship.nextArrivalTime
-                  .toISOString()
-                  .slice(0, 19)
-                  .replace("T", " ")
-              : null,
-            ship.ship_ID,
-          ],
-          (error) => {
-            if (error) {
-              console.error(
-                `Error updating data for ship_ID ${ship.ship_ID}:`,
-                error
-              )
-            } else {
-              console.log(
-                `Data for ship_ID ${ship.ship_ID} updated successfully.`
-              )
-            }
-          }
-        )
       }
+
+      // MySQL에 데이터 업데이트 시 KST로 변환하여 저장
+      pool.query(
+        `UPDATE air_pollution SET CO2 = ?, cnt = ?, total = ?, Arrival_Time = ?, Departure_Time = ?, stay_time = ?, Tonage = ?, status = ?, nextArrivalTime = ? WHERE ship_ID = ?`,
+        [
+          ship.CO2, // CO2 값을 업데이트에 포함
+          ship.cnt,
+          ship.total,
+          ship.Arrival_Time
+            ? toKST(ship.Arrival_Time)
+                .toISOString()
+                .slice(0, 19)
+                .replace("T", " ")
+            : null,
+          ship.Departure_Time
+            ? toKST(ship.Departure_Time)
+                .toISOString()
+                .slice(0, 19)
+                .replace("T", " ")
+            : null,
+          ship.Stay_Time,
+          ship.Tonage,
+          ship.status,
+          ship.nextArrivalTime
+            ? toKST(ship.nextArrivalTime)
+                .toISOString()
+                .slice(0, 19)
+                .replace("T", " ")
+            : null,
+          ship.ship_ID,
+        ],
+        (error) => {
+          if (error) {
+            console.error(
+              `ship_ID ${ship.ship_ID} 데이터 업데이트 오류:`,
+              error
+            )
+          } else {
+            console.log(
+              `ship_ID ${ship.ship_ID} 데이터가 성공적으로 업데이트되었습니다.`
+            )
+          }
+        }
+      )
     })
-  }, 5000)
+  }, 5000) // 5초 간격으로 반복 실행
 }
 
 // 초기화 후 시뮬레이션 실행
