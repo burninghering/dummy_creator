@@ -71,6 +71,7 @@ const userDefinedPolygon = turf.polygon([
 ])
 
 // 100대의 선박 초기화
+const cooldownDuration = 60 // 쿨다운 시간 (초)
 const ships = Array.from({ length: 100 }, (_, i) => ({
   ship_id: i + 1,
   lati: 35.989128 + Math.random() * 0.01,
@@ -79,6 +80,7 @@ const ships = Array.from({ length: 100 }, (_, i) => ({
   insideStartTime: null,
   exitAfter: null,
   cntUpdated: false,
+  cooldownEndTime: null, // 재진입을 제한하기 위한 쿨다운 시간
 }))
 
 // E_total 계산 함수
@@ -89,14 +91,20 @@ function calculateEmissions(T, t, V, C) {
 // 1초마다 실행하는 함수
 const intervalId = setInterval(() => {
   ships.forEach((ship) => {
-    // 이미 다각형 안에 있는 동안에는 위치 업데이트를 하지 않음
+    const currentTime = new Date()
+
+    // 쿨다운 중인 경우 재진입을 막음
+    if (ship.cooldownEndTime && currentTime < ship.cooldownEndTime) {
+      console.log(`쿨다운 중 - ship_id: ${ship.ship_id}`)
+      return
+    }
+
     if (ship.wasInside && ship.insideStartTime) {
-      const currentTime = new Date()
       const elapsedTime = (currentTime - ship.insideStartTime) / 1000
 
       if (elapsedTime < ship.exitAfter) {
         // 다각형 내에 있을 때 매초 stay_time, total, CO2 업데이트
-        const stayTime = 1 // 매초 추가된 시간을 의미
+        const stayTime = 1
 
         // MySQL에서 기존 stay_time, total, CO2 가져와서 업데이트
         const selectQuery = `SELECT stay_time, total, CO2 FROM old_ship WHERE ship_id = ?`
@@ -108,7 +116,6 @@ const intervalId = setInterval(() => {
             let currentTotal = results[0].total || 0
             let currentCO2 = results[0].CO2 || 0
 
-            // 현재 stay_time에 새로운 정박 시간 더하기
             const [hours, minutes, seconds] = currentStayTime
               .split(":")
               .map(Number)
@@ -124,7 +131,6 @@ const intervalId = setInterval(() => {
               newSeconds
             ).padStart(2, "0")}`
 
-            // E_total 계산
             const V = Math.random() * 2 + 2
             const C = Math.random() * 0.05 + 0.01
             const emissions = calculateEmissions(1, stayTime, V, C)
@@ -134,7 +140,6 @@ const intervalId = setInterval(() => {
               currentCO2 + parseFloat((Math.random() * 10 - 5).toFixed(2))
             )
 
-            // 데이터베이스에 업데이트
             const updateQuery = `
               UPDATE old_ship
               SET stay_time = ?, total = ?, CO2 = ?
@@ -159,59 +164,56 @@ const intervalId = setInterval(() => {
             })
           }
         })
-        return // 이동 없이 다음 ship으로 넘어감
+        return
       } else {
-        // 다각형 밖으로 나가도록 설정
+        // 배가 다각형을 떠나고 쿨다운 시작
         ship.wasInside = false
         ship.insideStartTime = null
         ship.exitAfter = null
         ship.cntUpdated = false
+        ship.cooldownEndTime = new Date(
+          currentTime.getTime() + cooldownDuration * 1000
+        )
         console.log(`선박이 다각형을 떠남 - ship_id: ${ship.ship_id}`)
       }
     }
 
-    // 무작위로 선박 이동 (작은 범위 내에서)
+    // 선박 이동 (다각형 밖으로 이동)
     ship.lati += (Math.random() - 0.5) * 0.001
-    ship.lati = parseFloat(ship.lati.toFixed(7))
     ship.longi += (Math.random() - 0.5) * 0.001
-    ship.longi = parseFloat(ship.longi.toFixed(7))
 
     const point = turf.point([ship.longi, ship.lati])
     const isInside = turf.booleanPointInPolygon(point, userDefinedPolygon)
 
     if (isInside && !ship.wasInside) {
-      // 선박이 다각형에 처음 들어왔을 때 초기 설정 및 cnt 증가
-      ship.insideStartTime = new Date()
-      ship.exitAfter =
-        Math.floor(Math.random() * (10 * 60 - 1 * 60 + 1)) + 1 * 60
-      ship.cntUpdated = true
-      ship.wasInside = true
-      console.log(`선박이 다각형에 진입함 - ship_id: ${ship.ship_id}`)
+      // 쿨다운 시간 종료 후만 재진입 허용
+      if (!ship.cooldownEndTime || currentTime >= ship.cooldownEndTime) {
+        ship.insideStartTime = new Date()
+        ship.exitAfter =
+          Math.floor(Math.random() * (10 * 60 - 1 * 60 + 1)) + 1 * 60
+        ship.cntUpdated = true
+        ship.wasInside = true
 
-      // MySQL에서 cnt 증가
-      const selectQuery = `SELECT cnt FROM old_ship WHERE ship_id = ?`
-      connection.query(selectQuery, [ship.ship_id], (err, results) => {
-        if (err) throw err
+        const selectQuery = `SELECT cnt FROM old_ship WHERE ship_id = ?`
+        connection.query(selectQuery, [ship.ship_id], (err, results) => {
+          if (err) throw err
 
-        if (results.length > 0) {
-          const currentCnt = results[0].cnt || 0
-          const updatedCnt = currentCnt + 1
+          if (results.length > 0) {
+            const currentCnt = results[0].cnt || 0
+            const updatedCnt = currentCnt + 1
 
-          const updateQuery = `
-            UPDATE old_ship
-            SET cnt = ?
-            WHERE ship_id = ?
-          `
-          const values = [updatedCnt, ship.ship_id]
+            const updateQuery = `UPDATE old_ship SET cnt = ? WHERE ship_id = ?`
+            const values = [updatedCnt, ship.ship_id]
 
-          connection.query(updateQuery, values, (err, result) => {
-            if (err) throw err
-            console.log(
-              `cnt 증가 완료: ship_id ${ship.ship_id}, cnt: ${updatedCnt}`
-            )
-          })
-        }
-      })
+            connection.query(updateQuery, values, (err, result) => {
+              if (err) throw err
+              console.log(
+                `cnt 증가 완료: ship_id ${ship.ship_id}, cnt: ${updatedCnt}`
+              )
+            })
+          }
+        })
+      }
     }
   })
-}, 1000) // 1초마다 실행
+}, 1000)

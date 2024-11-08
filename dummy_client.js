@@ -6,8 +6,8 @@ const ws = new WebSocket("ws://127.0.0.1:5000")
 
 // 데이터베이스 연결 풀 설정
 const pool = mysql.createPool({
-  host: "192.168.0.225",
-  // port: 7306,
+  host: "14.63.176.136",
+  port: 7306,
   user: "root",
   password: "netro9888!",
   database: "netro_data_platform",
@@ -169,6 +169,7 @@ ws.on("open", async () => {
           lati,
           longi,
           speed: 2 + Math.random() * 10, // 초기 속도 설정
+
           course: Math.floor(Math.random() * 360), // 초기 방향 설정
         }
       }
@@ -678,6 +679,7 @@ function avoidCollision(devId, newLati, newLongi, safeDistance) {
 }
 
 // 선박 데이터를 생성하는 함수 (경계를 벗어나기 전에 방향 조정)
+// 선박 데이터를 생성하는 함수 (경계를 벗어나기 전에 방향 조정)
 function generateCurvedVesselData(devId, polygon) {
   const currentDate = new Date() // 현재 시간을 생성
 
@@ -722,7 +724,7 @@ function generateCurvedVesselData(devId, polygon) {
 
   // 속도 및 방향의 범위를 조정하여 부드러운 이동 유지
   state.speed = Math.max(1, Math.min(10, state.speed + (Math.random() * 2 - 1))) // 속도 범위 확대
-  state.course = (state.course + (Math.random() * 20 - 10)) % 360 // 방향 변화 폭 증가
+  state.course = (state.course + (Math.random() * 20 - 10) + 360) % 360 // 방향 변화 폭 증가, 항상 양수 유지
 
   // rcv_datetime을 1~3초 이전으로 랜덤하게 설정
   const randomSeconds = Math.floor(Math.random() * 3) + 1
