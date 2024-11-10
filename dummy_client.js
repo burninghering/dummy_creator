@@ -132,6 +132,26 @@ ws.on("open", async () => {
   //     }
   //   }
 
+  setInterval(() => {
+    const currentHour = new Date().getHours() // 현재 시간에 맞춰 데이터 생성
+
+    // 해양 데이터 생성
+    for (let devId = 1; devId <= 5; devId++) {
+      // 예시: userDefinedPolygon이 정의되어 있다고 가정
+      const buoyData = generateTimeBasedDummyBuoyData(
+        devId,
+        currentHour,
+        userDefinedPolygon
+      )
+
+      buoyData.type = "buoy" // 데이터 타입을 명확하게 설정
+      ws.send(JSON.stringify(buoyData)) // buoyData 전송
+      console.log(`Sent buoy data for DEV_ID ${devId}:`, buoyData) // 로그로 데이터 전송 확인
+    }
+
+    console.log(`Sent buoy data to WebSocket server for Hour ${currentHour}`)
+  }, 5000) // 5초마다 데이터 전송
+
   // 모든 devId에 대해 매 1초마다 Vessel 데이터를 생성하여 서버로 전송
   setInterval(() => {
     // 다각형 구역을 미리 정의
@@ -177,7 +197,7 @@ ws.on("open", async () => {
       // 위치 업데이트 및 데이터 생성
       const vesselData = generateCurvedVesselData(devId, userDefinedPolygon)
       ws.send(JSON.stringify(vesselData)) // WebSocket으로 데이터 전송
-      console.log(`Sent Vessel data for DEV_ID ${devId}:`, vesselData) // 로그로 데이터 전송 확인
+      // console.log(`Sent Vessel data for DEV_ID ${devId}:`, vesselData) // 로그로 데이터 전송 확인
     }
   }, 1000) // 1초마다 데이터 전송
 })
@@ -679,7 +699,6 @@ function avoidCollision(devId, newLati, newLongi, safeDistance) {
 }
 
 // 선박 데이터를 생성하는 함수 (경계를 벗어나기 전에 방향 조정)
-// 선박 데이터를 생성하는 함수 (경계를 벗어나기 전에 방향 조정)
 function generateCurvedVesselData(devId, polygon) {
   const currentDate = new Date() // 현재 시간을 생성
 
@@ -709,7 +728,7 @@ function generateCurvedVesselData(devId, polygon) {
   if (!isPointInPolygon([predictedLati, predictedLongi], polygon)) {
     // 경계를 벗어날 경우 방향을 반대로 조정하여 경계 밖으로 나가지 않도록 함
     state.course = (state.course + 180) % 360 // 방향을 반대로 변경
-    console.log(`선박 ${devId}가 경계를 벗어나기 전에 방향을 반대로 조정`)
+    // console.log(`선박 ${devId}가 경계를 벗어나기 전에 방향을 반대로 조정`)
   }
 
   // 새로운 좌표 계산 (방향 조정 후)
