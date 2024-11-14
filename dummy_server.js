@@ -198,6 +198,7 @@ ws.on("open", async () => {
       const vesselData = generateCurvedVesselData(devId, userDefinedPolygon)
       ws.send(JSON.stringify(vesselData)) // WebSocket으로 데이터 전송
       console.log(`Sent Vessel data for DEV_ID ${devId}:`, vesselData) // 로그로 데이터 전송 확인
+      console.log("vesselData", vesselData) // 로그로 데이터 전송 확인
     }
   }, 1000) // 1초마다 데이터 전송
 })
