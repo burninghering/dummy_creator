@@ -1,12 +1,12 @@
 const WebSocket = require("ws")
 const mysql = require("mysql2")
-
 // WebSocket 서버에 연결
 const ws = new WebSocket("ws://127.0.0.1:5000")
+const pointInPolygon = require("point-in-polygon")
 
 // 데이터베이스 연결 풀 설정
 const pool = mysql.createPool({
-  host: "14.63.176.136",
+  host: "14.63.176.165",
   port: 7306,
   user: "root",
   password: "netro9888!",
@@ -89,9 +89,9 @@ ws.on("open", async () => {
       }
       airData.type = "air"
       ws.send(JSON.stringify(airData))
-      console.log(
-        `Sent Air data for DEV_ID ${devId}: ${JSON.stringify(airData)}`
-      )
+      // console.log(
+      //   // `Sent Air data for DEV_ID ${devId}: ${JSON.stringify(airData)}`
+      // )
     }
   }, 5000) // 5초마다 데이터 전송
 
@@ -146,7 +146,7 @@ ws.on("open", async () => {
 
       buoyData.type = "buoy" // 데이터 타입을 명확하게 설정
       ws.send(JSON.stringify(buoyData)) // buoyData 전송
-      console.log(`Sent buoy data for DEV_ID ${devId}:`, buoyData) // 로그로 데이터 전송 확인
+      // console.log(`Sent buoy data for DEV_ID ${devId}:`, buoyData) // 로그로 데이터 전송 확인
     }
 
     console.log(`Sent buoy data to WebSocket server for Hour ${currentHour}`)
@@ -197,7 +197,7 @@ ws.on("open", async () => {
       // 위치 업데이트 및 데이터 생성
       const vesselData = generateCurvedVesselData(devId, userDefinedPolygon)
       ws.send(JSON.stringify(vesselData)) // WebSocket으로 데이터 전송
-      // console.log(`Sent Vessel data for DEV_ID ${devId}:`, vesselData) // 로그로 데이터 전송 확인
+      console.log(`Sent Vessel data for DEV_ID ${devId}:`, vesselData) // 로그로 데이터 전송 확인
     }
   }, 1000) // 1초마다 데이터 전송
 })
@@ -416,7 +416,7 @@ function generateSmoothCyclicAirData(devId) {
     }
   }
 
-  console.log(`Generated data for DEV_ID ${devId}:`, data)
+  // console.log(`Generated data for DEV_ID ${devId}:`, data)
   return data
 }
 
@@ -639,24 +639,8 @@ function formatDateToYYYYMMDDHHMMSS(date) {
 
 // 점이 다각형 내부에 있는지 확인하는 함수 (Ray-casting 알고리즘)
 function isPointInPolygon(point, polygon) {
-  let x = point[0],
-    y = point[1]
-  let inside = false
-
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    let xi = polygon[i][0],
-      yi = polygon[i][1]
-    let xj = polygon[j][0],
-      yj = polygon[j][1]
-
-    let intersect =
-      yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi
-    if (intersect) inside = !inside
-  }
-
-  return inside
+  return pointInPolygon(point, polygon)
 }
-
 // 다각형 내부에서 임의의 좌표를 생성하는 함수
 function getRandomCoordinateWithinPolygon(polygon = []) {
   if (!polygon.length) {
@@ -699,8 +683,80 @@ function avoidCollision(devId, newLati, newLongi, safeDistance) {
 }
 
 // 선박 데이터를 생성하는 함수 (경계를 벗어나기 전에 방향 조정)
+// function generateCurvedVesselData(devId, polygon) {
+//   const currentDate = new Date() // 현재 시간을 생성
+
+//   // 초기 상태 설정
+//   if (!vesselState[devId]) {
+//     const { lati, longi } = getRandomCoordinateWithinPolygon(polygon)
+//     vesselState[devId] = {
+//       lati,
+//       longi,
+//       speed: 2 + Math.random() * 5, // 초기 속도 설정 (속도 범위 조정)
+//       course: Math.floor(Math.random() * 360), // 초기 방향 설정
+//     }
+//   }
+
+//   let state = vesselState[devId]
+
+//   // 이동 거리 및 곡선 이동 조정
+//   const speedFactor = state.speed / 1000 // 이동 거리 조정 (값을 더 크게 설정)
+
+//   // 새로운 좌표 계산 (미리 예측)
+//   let predictedLati =
+//     state.lati + speedFactor * Math.cos((state.course * Math.PI) / 180)
+//   let predictedLongi =
+//     state.longi + speedFactor * Math.sin((state.course * Math.PI) / 180)
+
+//   // 현재 위치를 확인하고 방향을 조정하는 코드
+//   if (!isPointInPolygon([state.lati, state.longi], polygon)) {
+//     console.log(
+//       `배 ${devId}가 경계를 벗어났습니다: 현재 위치 (${state.lati}, ${state.longi})`
+//     )
+//     state.course = (state.course + 180) % 360 // 방향을 반대로 변경
+//     console.log(`배 ${devId}의 방향을 180도로 변경했습니다.`)
+//   }
+
+//   // 새로운 좌표 계산 (방향 조정 후)
+//   let newLati =
+//     state.lati + speedFactor * Math.cos((state.course * Math.PI) / 180)
+//   let newLongi =
+//     state.longi + speedFactor * Math.sin((state.course * Math.PI) / 180)
+
+//   // 새로운 위치를 `vesselState`에 반영
+//   state.lati = newLati
+//   state.longi = newLongi
+
+//   // 속도 및 방향의 범위를 조정하여 부드러운 이동 유지
+//   state.speed = Math.max(1, Math.min(10, state.speed + (Math.random() * 2 - 1))) // 속도 범위 확대
+//   state.course = (state.course + (Math.random() * 20 - 10) + 360) % 360 // 방향 변화 폭 증가, 항상 양수 유지
+
+//   // rcv_datetime을 1~3초 이전으로 랜덤하게 설정
+//   const randomSeconds = Math.floor(Math.random() * 3) + 1
+//   const log_datetime = formatDateToYYYYMMDDHHMMSS(currentDate)
+//   const rcv_datetime = formatDateToYYYYMMDDHHMMSS(
+//     new Date(currentDate.getTime() - randomSeconds * 1000)
+//   )
+
+//   // 요청된 형식의 더미 데이터 생성
+//   const vesselData = {
+//     type: "vessel",
+//     id: devId,
+//     log_datetime: log_datetime,
+//     rcv_datetime: rcv_datetime,
+//     lati: state.lati.toFixed(7),
+//     longi: state.longi.toFixed(7),
+//     speed: parseFloat(state.speed.toFixed(2)),
+//     course: parseFloat(state.course.toFixed(0)),
+//     azimuth: (50 + Math.floor(Math.random() * 10)).toFixed(0),
+//   }
+
+//   return vesselData
+// }
+
+// 선박 데이터를 생성하는 함수 (경계를 벗어나기 전에 방향 조정)
 function generateCurvedVesselData(devId, polygon) {
-  const currentDate = new Date() // 현재 시간을 생성
+  const currentDate = new Date()
 
   // 초기 상태 설정
   if (!vesselState[devId]) {
@@ -708,56 +764,43 @@ function generateCurvedVesselData(devId, polygon) {
     vesselState[devId] = {
       lati,
       longi,
-      speed: 2 + Math.random() * 5, // 초기 속도 설정 (속도 범위 조정)
+      speed: 2 + Math.random() * 5, // 초기 속도 설정
       course: Math.floor(Math.random() * 360), // 초기 방향 설정
     }
   }
 
   let state = vesselState[devId]
 
-  // 이동 거리 및 곡선 이동 조정
-  const speedFactor = state.speed / 1000 // 이동 거리 조정 (값을 더 크게 설정)
+  // 이동 거리 조정
+  const speedFactor = state.speed / 2500
 
-  // 새로운 좌표 계산 (미리 예측)
-  let predictedLati =
-    state.lati + speedFactor * Math.cos((state.course * Math.PI) / 180)
-  let predictedLongi =
-    state.longi + speedFactor * Math.sin((state.course * Math.PI) / 180)
+  // 현재 위치가 다각형 경계를 벗어나는지 확인
+  if (!pointInPolygon([state.lati, state.longi], polygon)) {
+    // 경계를 벗어나면 방향을 반대로 조정
+    state.course = (state.course + 180) % 360
+    console.log(`선박 ${devId}가 경계를 벗어났습니다: 방향을 반대로 조정`)
 
-  // 예측된 좌표가 다각형 경계 내에 있는지 확인
-  if (!isPointInPolygon([predictedLati, predictedLongi], polygon)) {
-    // 경계를 벗어날 경우 방향을 반대로 조정하여 경계 밖으로 나가지 않도록 함
-    state.course = (state.course + 180) % 360 // 방향을 반대로 변경
-    // console.log(`선박 ${devId}가 경계를 벗어나기 전에 방향을 반대로 조정`)
+    // 새로운 방향으로 이동 업데이트
+    state.lati += speedFactor * Math.cos((state.course * Math.PI) / 180)
+    state.longi += speedFactor * Math.sin((state.course * Math.PI) / 180)
+  } else {
+    // 다각형 내부에 있을 때만 위치 업데이트
+    state.lati += speedFactor * Math.cos((state.course * Math.PI) / 180)
+    state.longi += speedFactor * Math.sin((state.course * Math.PI) / 180)
   }
 
-  // 새로운 좌표 계산 (방향 조정 후)
-  let newLati =
-    state.lati + speedFactor * Math.cos((state.course * Math.PI) / 180)
-  let newLongi =
-    state.longi + speedFactor * Math.sin((state.course * Math.PI) / 180)
+  // 속도 및 방향 조정
+  state.speed = Math.max(1, Math.min(10, state.speed + (Math.random() * 2 - 1)))
+  state.course = (state.course + (Math.random() * 20 - 10) + 360) % 360
 
-  // 새로운 위치를 `vesselState`에 반영
-  state.lati = newLati
-  state.longi = newLongi
-
-  // 속도 및 방향의 범위를 조정하여 부드러운 이동 유지
-  state.speed = Math.max(1, Math.min(10, state.speed + (Math.random() * 2 - 1))) // 속도 범위 확대
-  state.course = (state.course + (Math.random() * 20 - 10) + 360) % 360 // 방향 변화 폭 증가, 항상 양수 유지
-
-  // rcv_datetime을 1~3초 이전으로 랜덤하게 설정
-  const randomSeconds = Math.floor(Math.random() * 3) + 1
-  const log_datetime = formatDateToYYYYMMDDHHMMSS(currentDate)
-  const rcv_datetime = formatDateToYYYYMMDDHHMMSS(
-    new Date(currentDate.getTime() - randomSeconds * 1000)
-  )
-
-  // 요청된 형식의 더미 데이터 생성
+  // 더미 데이터 생성
   const vesselData = {
     type: "vessel",
     id: devId,
-    log_datetime: log_datetime,
-    rcv_datetime: rcv_datetime,
+    log_datetime: formatDateToYYYYMMDDHHMMSS(currentDate),
+    rcv_datetime: formatDateToYYYYMMDDHHMMSS(
+      new Date(currentDate.getTime() - Math.floor(Math.random() * 3 + 1) * 1000)
+    ),
     lati: state.lati.toFixed(7),
     longi: state.longi.toFixed(7),
     speed: parseFloat(state.speed.toFixed(2)),
