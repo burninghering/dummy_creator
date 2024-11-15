@@ -198,7 +198,7 @@ ws.on("open", async () => {
       const vesselData = generateCurvedVesselData(devId, userDefinedPolygon)
       ws.send(JSON.stringify(vesselData)) // WebSocket으로 데이터 전송
       console.log(`Sent Vessel data for DEV_ID ${devId}:`, vesselData) // 로그로 데이터 전송 확인
-      console.log("vesselData", vesselData) // 로그로 데이터 전송 확인
+      console.log("vesselData::::::::" + vesselData) // 로그로 데이터 전송 확인
     }
   }, 1000) // 1초마다 데이터 전송
 })
@@ -799,9 +799,7 @@ function generateCurvedVesselData(devId, polygon) {
     type: "vessel",
     id: devId,
     log_datetime: formatDateToYYYYMMDDHHMMSS(currentDate),
-    rcv_datetime: formatDateToYYYYMMDDHHMMSS(
-      new Date(currentDate.getTime() - Math.floor(Math.random() * 3 + 1) * 1000)
-    ),
+    rcv_datetime: formatDateToYYYYMMDDHHMMSS(currentDate),
     lati: state.lati.toFixed(7),
     longi: state.longi.toFixed(7),
     speed: parseFloat(state.speed.toFixed(2)),
