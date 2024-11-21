@@ -72,70 +72,70 @@ for (let devId = 1; devId <= 202; devId++) {
   )
 }
 
-// // 데이터베이스에서 초기 상태 가져오기
-// async function initializeVesselState() {
-//   return new Promise((resolve, reject) => {
-//     const query = `
-//         SELECT 
-//           t1.DEV_ID, 
-//           t1.SEN_ID, 
-//           t1.sen_value
-//         FROM 
-//           example_vessel_log_data t1
-//         INNER JOIN (
-//           SELECT DEV_ID, MAX(log_datetime) AS latest_time
-//           FROM example_vessel_log_data
-//           WHERE SEN_ID IN (2, 3, 4, 5, 6)
-//           GROUP BY DEV_ID
-//         ) t2
-//         ON t1.DEV_ID = t2.DEV_ID AND t1.log_datetime = t2.latest_time
-//       `
+// 데이터베이스에서 초기 상태 가져오기
+async function initializeVesselState() {
+  return new Promise((resolve, reject) => {
+    const query = `
+        SELECT 
+          t1.DEV_ID, 
+          t1.SEN_ID, 
+          t1.sen_value
+        FROM 
+          example_vessel_log_data t1
+        INNER JOIN (
+          SELECT DEV_ID, MAX(log_datetime) AS latest_time
+          FROM example_vessel_log_data_latest
+          WHERE SEN_ID IN (2, 3, 4, 5, 6)
+          GROUP BY DEV_ID
+        ) t2
+        ON t1.DEV_ID = t2.DEV_ID AND t1.log_datetime = t2.latest_time
+      `
 
-//     pool.query(query, (err, results) => {
-//       if (err) {
-//         console.error("초기 좌표를 가져오는 중 오류가 발생했습니다:", err)
-//         return reject(err)
-//       }
+    pool.query(query, (err, results) => {
+      if (err) {
+        console.error("초기 좌표를 가져오는 중 오류가 발생했습니다:", err)
+        return reject(err)
+      }
 
-//       results.forEach((row) => {
-//         const devId = row.DEV_ID
-//         const senId = row.SEN_ID
-//         const value = parseFloat(row.sen_value)
+      results.forEach((row) => {
+        const devId = row.DEV_ID
+        const senId = row.SEN_ID
+        const value = parseFloat(row.sen_value)
 
-//         if (!vesselState[devId]) {
-//           vesselState[devId] = {
-//             lati: 0,
-//             longi: 0,
-//             speed: 0,
-//             course: 0,
-//             azimuth: 0,
-//           }
-//         }
+        if (!vesselState[devId]) {
+          vesselState[devId] = {
+            lati: 0,
+            longi: 0,
+            speed: 0,
+            course: 0,
+            azimuth: 0,
+          }
+        }
 
-//         switch (senId) {
-//           case 2:
-//             vesselState[devId].lati = value
-//             break
-//           case 3:
-//             vesselState[devId].longi = value
-//             break
-//           case 4:
-//             vesselState[devId].speed = value
-//             break
-//           case 5:
-//             vesselState[devId].course = value
-//             break
-//           case 6:
-//             vesselState[devId].azimuth = value
-//             break
-//         }
-//       })
+        switch (senId) {
+          case 2:
+            vesselState[devId].lati = value
+            break
+          case 3:
+            vesselState[devId].longi = value
+            break
+          case 4:
+            vesselState[devId].speed = value
+            break
+          case 5:
+            vesselState[devId].course = value
+            break
+          case 6:
+            vesselState[devId].azimuth = value
+            break
+        }
+      })
 
-//       console.log("선박 상태 초기화가 완료되었습니다")
-//       resolve()
-//     })
-//   })
-// }
+      console.log("선박 상태 초기화가 완료되었습니다")
+      resolve()
+    })
+  })
+}
 
 // 202개의 데이터를 처리하는 함수
 function processBatch(batch) {
@@ -235,31 +235,49 @@ function formatDateToYYYYMMDDHHMMSS(date) {
 }
 
 // 메인 실행 로직
-;(async () => {
-  console.log("선박 상태를 초기화 중입니다...")
- // await initializeVesselState() // 초기 상태 불러오기
+(async () => {
+  console.log("선박 상태를 초기화 중입니다...");
+  await initializeVesselState() // 초기 상태 불러오기 
 
-  setInterval(() => {
+  setInterval(async () => {
+    const sendPromises = []; // 병렬 처리를 위한 Promise 배열
+
     for (let devId = 1; devId <= 202; devId++) {
-      const ws = webSockets[devId - 1]
+      const ws = webSockets[devId - 1];
       if (ws.readyState === WebSocket.OPEN) {
-        const vesselData = generateCurvedVesselData(devId, userDefinedPolygon)
-  
+        const vesselData = generateCurvedVesselData(devId, userDefinedPolygon);
+
         // 데이터 검증
-        const validData = validateVesselData(vesselData)
+        const validData = validateVesselData(vesselData);
         if (validData) {
-          ws.send(JSON.stringify(vesselData), (err) => {
-            if (err) {
-              console.error(`Vessel ID ${devId} 전송 중 오류 발생:`, err)
-            }
-          })
+          // WebSocket 전송 작업을 Promise로 감싸서 배열에 추가
+          const sendPromise = new Promise((resolve, reject) => {
+            ws.send(JSON.stringify(vesselData), (err) => {
+              if (err) {
+                console.error(`Vessel ID ${devId} 전송 중 오류 발생:`, err);
+                reject(err);
+              } else {
+                resolve();
+              }
+            });
+          });
+          sendPromises.push(sendPromise);
         }
       } else {
-        console.warn(`Vessel ID ${devId}의 WebSocket 연결이 열려 있지 않습니다`)
+        console.warn(`Vessel ID ${devId}의 WebSocket 연결이 열려 있지 않습니다`);
       }
     }
-  }, 1000)
-})()
+
+    try {
+      // 병렬로 모든 WebSocket 전송 작업 수행
+      await Promise.all(sendPromises);
+      console.log("모든 데이터를 성공적으로 전송했습니다");
+    } catch (error) {
+      console.error("일부 데이터 전송 실패:", error);
+    }
+  }, 1000);
+})();
+
 
 // 데이터 유효성 검증 함수
 function validateVesselData(data) {
