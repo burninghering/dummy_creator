@@ -6,10 +6,10 @@ const pointInPolygon = require("point-in-polygon")
 
 // 데이터베이스 연결 풀 설정
 const pool = mysql.createPool({
-  host: "14.63.176.165",
-  port: 7306,
+  host: "172.25.4.87",
+  port: 3306,
   user: "root",
-  password: "netro9888!",
+  password: "DH2vY8M17fQqpFdm",
   database: "netro_data_platform",
   waitForConnections: true,
   connectionLimit: 10,
@@ -95,43 +95,6 @@ ws.on("open", async () => {
     }
   }, 5000) // 5초마다 데이터 전송
 
-  //   // 대기데이터 시나리오 생성
-  //   setInterval(() => {
-  //     const currentHour = new Date().getHours() // 현재 시간에 맞춰 데이터 생성
-  //     const currentDay = new Date().getDay() // 요일을 얻어와 시나리오 적용
-  //     const event = getEventForGuryongpo() // 구룡포항에서 발생할 이벤트 결정 (예: 어선 활동, 폭풍 경보 등)
-
-  //     // 대기 데이터 생성 및 WebSocket 서버로 전송
-  //     for (let devId = 1; devId <= 5; devId++) {
-  //       // 시나리오에 따라 데이터를 생성
-  //       const airScenarioData = triggerScenario(
-  //         devId,
-  //         currentHour,
-  //         currentDay,
-  //         event
-  //       )
-  //       ws.send(JSON.stringify(airScenarioData)) // WebSocket 서버로 데이터 전송
-  //     }
-
-  //     console.log(
-  //       `Sent Air data to WebSocket server for Hour ${currentHour} with event ${event}`
-  //     )
-  //   }, 1000) // 1초마다 데이터 전송
-
-  //   // 구룡포항에서 발생할 이벤트를 결정하는 함수
-  //   function getEventForGuryongpo() {
-  //     const randomValue = Math.random()
-  //     if (randomValue < 0.3) {
-  //       return "fishing_boat" // 30% 확률로 어선 활동
-  //     } else if (randomValue < 0.6) {
-  //       return "tourism" // 30% 확률로 관광 성수기
-  //     } else if (randomValue < 0.9) {
-  //       return "storm" // 30% 확률로 폭풍 경보
-  //     } else {
-  //       return null // 이벤트 없음 (기본 상태)
-  //     }
-  //   }
-
   setInterval(() => {
     const currentHour = new Date().getHours() // 현재 시간에 맞춰 데이터 생성
 
@@ -153,6 +116,9 @@ ws.on("open", async () => {
   }, 5000) // 5초마다 데이터 전송
 
   // 모든 devId에 대해 매 1초마다 Vessel 데이터를 생성하여 서버로 전송
+
+  let vesselDataList = [] // vesselData를 저장할 배열
+
   setInterval(() => {
     // 다각형 구역을 미리 정의
     const userDefinedPolygon = [
@@ -178,7 +144,6 @@ ws.on("open", async () => {
       [35.987072, 129.557047],
       [35.989301, 129.559683], // 마지막 좌표 (다각형 닫기)
     ]
-
     // 1번부터 100번까지 모든 devId의 데이터를 업데이트하고 전송
     for (let devId = 1; devId <= 100; devId++) {
       // vesselState에 devId가 없으면 초기화
@@ -189,18 +154,65 @@ ws.on("open", async () => {
           lati,
           longi,
           speed: 2 + Math.random() * 10, // 초기 속도 설정
-
           course: Math.floor(Math.random() * 360), // 초기 방향 설정
         }
       }
 
       // 위치 업데이트 및 데이터 생성
       const vesselData = generateCurvedVesselData(devId, userDefinedPolygon)
-      ws.send(JSON.stringify(vesselData)) // WebSocket으로 데이터 전송
-      console.log(`Sent Vessel data for DEV_ID ${devId}:`, vesselData) // 로그로 데이터 전송 확인
-      console.log("vesselData::::::::" + vesselData) // 로그로 데이터 전송 확인
+
+      vesselDataList.push(vesselData)
     }
+    console.log(vesselDataList)
+    const sendPromises = vesselDataList.map((data) => {
+      return new Promise((resolve, reject) => {
+        ws.send(JSON.stringify(data), (err) => {
+          if (err) {
+            reject(`Error sending data: ${JSON.stringify(data)}`)
+          } else {
+            resolve(`Sent data: ${JSON.stringify(data)}`)
+          }
+        })
+      })
+    })
+    // 병렬 전송을 처리하고 결과를 출력
+    Promise.all(sendPromises)
+      .then((results) => {
+        console.log("All data sent:", results)
+      })
+      .catch((err) => {
+        console.error("Error in sending data:", err)
+      })
   }, 1000) // 1초마다 데이터 전송
+
+//   setInterval(async () => {
+//     if (vesselDataList.length > 0) {
+//       // WebSocket으로 모든 데이터를 한 번에 전송
+//       await sendVesselData(vesselDataList)
+
+//       // 로그로 데이터 전송 확인
+//       console.log("Sent Vessel data:", vesselDataList)
+
+//       // 전송 후, 배열 초기화 (다음 데이터를 받기 위해)
+//       vesselDataList = []
+//     }
+//   }, 1000)
+
+//   // 비동기 함수로 데이터 전송
+//   async function sendVesselData(data) {
+//     return new Promise((resolve, reject) => {
+//       ws.send(JSON.stringify(data), (error) => {
+//         if (error) {
+//           console.error("Error sending WebSocket data:", error)
+//           reject(error)
+//         } else {
+//           resolve()
+//         }
+//       })
+//     })
+//   }
+
+  ////끝
 })
 
 // 서버로부터 응답 메시지를 받으면 처리
@@ -218,99 +230,6 @@ ws.on("error", (error) => {
   console.error("WebSocket error:", error)
 })
 
-//<----------------------------------------------------------------대기
-
-// function generateTimeBasedDummyAirData(devId, hour) {
-//   // 시간대별 기준값 설정
-//   let pm10Base =
-//     hour >= 6 && hour < 9
-//       ? 30 // 아침에는 낮은 PM10 값
-//       : hour >= 9 && hour < 18
-//       ? 60 // 낮에는 PM10 증가
-//       : hour >= 18 && hour < 24
-//       ? 40
-//       : 20 // 밤에는 PM10 감소
-
-//   let pm25Base =
-//     hour >= 6 && hour < 9
-//       ? 20 // 아침에 낮은 PM2.5 값
-//       : hour >= 9 && hour < 18
-//       ? 50 // 낮에는 PM2.5 증가
-//       : hour >= 18 && hour < 24
-//       ? 30
-//       : 15 // 밤에 PM2.5 감소
-
-//   let tempBase =
-//     hour >= 0 && hour < 6
-//       ? 18 // 새벽에는 낮은 온도
-//       : hour >= 6 && hour < 12
-//       ? 22 // 아침에 온도 상승
-//       : hour >= 12 && hour < 16
-//       ? 30 // 오후에 온도 최고
-//       : hour >= 16 && hour < 20
-//       ? 25
-//       : 20 // 저녁과 밤에 온도 하락
-
-//   let humiBase =
-//     hour >= 0 && hour < 6
-//       ? 75 // 새벽에는 습도 상승
-//       : hour >= 6 && hour < 12
-//       ? 60 // 아침에 습도 감소
-//       : hour >= 12 && hour < 18
-//       ? 50 // 오후에 낮은 습도
-//       : hour >= 18 && hour < 24
-//       ? 65
-//       : 70 // 밤에 습도 다시 상승
-
-//   let so2Base =
-//     hour >= 8 && hour < 18
-//       ? 0.03 // 주간에 SO2 증가
-//       : 0.01 // 야간에 SO2 감소
-
-//   let no2Base =
-//     hour >= 7 && hour < 19
-//       ? 0.03 // 차량 운행이 많은 낮에 NO2 증가
-//       : 0.01 // 야간에 NO2 감소
-
-//   let o3Base =
-//     hour >= 10 && hour < 16
-//       ? 0.05 // 태양광 강한 낮 시간에 O3 증가
-//       : hour >= 16 && hour < 20
-//       ? 0.03
-//       : 0.01 // 저녁과 밤에는 감소
-
-//   let coBase = hour >= 5 && hour < 22 ? 0.4 : 0.2 // 대부분 시간 CO 증가
-
-//   let vocBase =
-//     hour >= 6 && hour < 18
-//       ? 0.005 // 낮 시간에 VOC 증가
-//       : 0.002 // 밤에 VOC 감소
-
-//   let h2sBase =
-//     hour >= 7 && hour < 20
-//       ? 0.01 // 주간에 H2S 증가
-//       : 0.005 // 야간에 감소
-
-//   let nh3Base = hour >= 6 && hour < 18 ? 8 : 5 // 낮에 NH3 증가, 밤에 감소
-
-//   let ouBase =
-//     hour >= 6 && hour < 18
-//       ? 0.005 // 낮에 악취 증가
-//       : 0.002 // 밤에 악취 감소
-
-//   let hchoBase =
-//     hour >= 10 && hour < 16
-//       ? 0.15 // 낮 시간에 HCHO 증가
-//       : 0.1 // 그 외 시간에 감소
-
-//   let winspBase =
-//     hour >= 6 && hour < 18
-//       ? 2.0 // 낮에 풍속 증가
-//       : 1.0 // 밤에는 풍속 감소
-
-//   let battBase = hour >= 0 && hour < 24 ? 12.0 : 12.0 // 배터리는 크게 변하지 않음
-
-// 각 센서의 초기 상태를 저장할 객체 (0부터 4까지 타겟을 순환)
 const sensorStates = {
   1: {
     PM10: { value: 0, targetLevel: 1 },
@@ -684,78 +603,6 @@ function avoidCollision(devId, newLati, newLongi, safeDistance) {
 }
 
 // 선박 데이터를 생성하는 함수 (경계를 벗어나기 전에 방향 조정)
-// function generateCurvedVesselData(devId, polygon) {
-//   const currentDate = new Date() // 현재 시간을 생성
-
-//   // 초기 상태 설정
-//   if (!vesselState[devId]) {
-//     const { lati, longi } = getRandomCoordinateWithinPolygon(polygon)
-//     vesselState[devId] = {
-//       lati,
-//       longi,
-//       speed: 2 + Math.random() * 5, // 초기 속도 설정 (속도 범위 조정)
-//       course: Math.floor(Math.random() * 360), // 초기 방향 설정
-//     }
-//   }
-
-//   let state = vesselState[devId]
-
-//   // 이동 거리 및 곡선 이동 조정
-//   const speedFactor = state.speed / 1000 // 이동 거리 조정 (값을 더 크게 설정)
-
-//   // 새로운 좌표 계산 (미리 예측)
-//   let predictedLati =
-//     state.lati + speedFactor * Math.cos((state.course * Math.PI) / 180)
-//   let predictedLongi =
-//     state.longi + speedFactor * Math.sin((state.course * Math.PI) / 180)
-
-//   // 현재 위치를 확인하고 방향을 조정하는 코드
-//   if (!isPointInPolygon([state.lati, state.longi], polygon)) {
-//     console.log(
-//       `배 ${devId}가 경계를 벗어났습니다: 현재 위치 (${state.lati}, ${state.longi})`
-//     )
-//     state.course = (state.course + 180) % 360 // 방향을 반대로 변경
-//     console.log(`배 ${devId}의 방향을 180도로 변경했습니다.`)
-//   }
-
-//   // 새로운 좌표 계산 (방향 조정 후)
-//   let newLati =
-//     state.lati + speedFactor * Math.cos((state.course * Math.PI) / 180)
-//   let newLongi =
-//     state.longi + speedFactor * Math.sin((state.course * Math.PI) / 180)
-
-//   // 새로운 위치를 `vesselState`에 반영
-//   state.lati = newLati
-//   state.longi = newLongi
-
-//   // 속도 및 방향의 범위를 조정하여 부드러운 이동 유지
-//   state.speed = Math.max(1, Math.min(10, state.speed + (Math.random() * 2 - 1))) // 속도 범위 확대
-//   state.course = (state.course + (Math.random() * 20 - 10) + 360) % 360 // 방향 변화 폭 증가, 항상 양수 유지
-
-//   // rcv_datetime을 1~3초 이전으로 랜덤하게 설정
-//   const randomSeconds = Math.floor(Math.random() * 3) + 1
-//   const log_datetime = formatDateToYYYYMMDDHHMMSS(currentDate)
-//   const rcv_datetime = formatDateToYYYYMMDDHHMMSS(
-//     new Date(currentDate.getTime() - randomSeconds * 1000)
-//   )
-
-//   // 요청된 형식의 더미 데이터 생성
-//   const vesselData = {
-//     type: "vessel",
-//     id: devId,
-//     log_datetime: log_datetime,
-//     rcv_datetime: rcv_datetime,
-//     lati: state.lati.toFixed(7),
-//     longi: state.longi.toFixed(7),
-//     speed: parseFloat(state.speed.toFixed(2)),
-//     course: parseFloat(state.course.toFixed(0)),
-//     azimuth: (50 + Math.floor(Math.random() * 10)).toFixed(0),
-//   }
-
-//   return vesselData
-// }
-
-// 선박 데이터를 생성하는 함수 (경계를 벗어나기 전에 방향 조정)
 function generateCurvedVesselData(devId, polygon) {
   const currentDate = new Date()
 
@@ -799,7 +646,7 @@ function generateCurvedVesselData(devId, polygon) {
     type: "vessel",
     id: devId,
     log_datetime: formatDateToYYYYMMDDHHMMSS(currentDate),
-    rcv_datetime: formatDateToYYYYMMDDHHMMSS(currentDate),
+    rcv_datetime: formatDateToYYYYMMDDHHMMSS(new Date(currentDate)),
     lati: state.lati.toFixed(7),
     longi: state.longi.toFixed(7),
     speed: parseFloat(state.speed.toFixed(2)),
@@ -820,7 +667,6 @@ function formatDateToYYYYMMDDHHMMSS(date) {
   const seconds = String(date.getSeconds()).padStart(2, "0")
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }
-
 // 다각형 정의 (예: 구룡포항 근처 좌표)
 const userDefinedPolygon = [
   [35.989301, 129.559683],
@@ -847,128 +693,3 @@ const userDefinedPolygon = [
   [35.987072, 129.557047],
   [35.989301, 129.559683], // 다각형 닫기
 ]
-
-//<--시나리오-->
-// function triggerScenario(devId, hour, dayOfWeek, event = null) {
-//   // 구룡포항에서 일어날 수 있는 시나리오 설정
-//   const isFishingBoatActive = event === "fishing_boat" // 어선이 활동 중일 때
-//   const isTouristPeakSeason = event === "tourism" // 관광 성수기
-//   const isStormWarning = event === "storm" // 폭풍 경보 발생
-
-//   // 시간대별 조건
-//   const isMorning = hour >= 6 && hour < 9 // 오전 어선 출항 시간
-//   const isAfternoon = hour >= 12 && hour < 15 // 오후 관광객 방문 시간
-//   const isEvening = hour >= 18 && hour < 21 // 저녁 어선 귀항 시간
-
-//   // 구룡포항에서 발생할 수 있는 시나리오
-//   if (isFishingBoatActive && (isMorning || isEvening)) {
-//     console.log(
-//       "어선 활동: 어선의 출항 또는 귀항으로 인해 공기 오염 수치가 상승합니다."
-//     )
-//     return generateFishingBoatScenario(devId, hour) // 어선 활동 중 더미 데이터 생성
-//   } else if (isTouristPeakSeason && isAfternoon) {
-//     console.log(
-//       "관광 성수기: 많은 관광객이 방문하여 공기 오염 수치가 소폭 증가합니다."
-//     )
-//     return generateTourismScenario(devId, hour) // 관광 성수기 더미 데이터 생성
-//   } else if (isStormWarning) {
-//     console.log(
-//       "폭풍 경보: 바람과 악천후로 인해 공기질이 일시적으로 악화됩니다."
-//     )
-//     return generateStormScenario(devId, hour) // 폭풍 경보 더미 데이터 생성
-//   } else {
-//     // 기본적인 공기질 데이터 생성
-//     console.log("일반적인 구룡포항 환경: 기본 공기질 데이터를 생성합니다.")
-//     return generateTimeBasedDummyAirData(devId, hour) // 기본 공기질 데이터 생성
-//   }
-// }
-
-// // 어선 활동 시나리오
-// function generateFishingBoatScenario(devId, hour) {
-//   const data = {
-//     DEV_ID: devId,
-//     PM10: (50 + Math.random() * 20).toFixed(1), // 어선의 출항 또는 귀항 시 PM10 상승
-//     NO2: (0.05 + Math.random() * 0.02).toFixed(3), // NO2 수치 상승
-//     SO2: (0.03 + Math.random() * 0.01).toFixed(3), // SO2 수치 상승
-//     TEMP: (20 + Math.random() * 5).toFixed(1), // 기본 온도 값
-//     HUMI: (60 + Math.random() * 10).toFixed(1), // 기본 습도 값
-//     WINDsp: (1.5 + Math.random() * 1).toFixed(1), // 기본 풍속
-//     CO: (0.4 + Math.random() * 0.1).toFixed(3),
-//     FIRM: "1.0.0",
-//     SEND: 1,
-//   }
-//   console.log("Fishing Boat Scenario Data:", data)
-//   return data
-// }
-
-// // 관광 성수기 시나리오
-// function generateTourismScenario(devId, hour) {
-//   const data = {
-//     DEV_ID: devId,
-//     PM10: (40 + Math.random() * 10).toFixed(1), // 관광 성수기에 관광객 활동으로 PM10 소폭 증가
-//     NO2: (0.04 + Math.random() * 0.01).toFixed(3), // NO2 소폭 증가
-//     SO2: (0.02 + Math.random() * 0.01).toFixed(3), // SO2 증가
-//     TEMP: (22 + Math.random() * 5).toFixed(1), // 기본 온도 값
-//     HUMI: (55 + Math.random() * 10).toFixed(1), // 기본 습도 값
-//     WINDsp: (2.0 + Math.random() * 1).toFixed(1), // 기본 풍속
-//     FIRM: "1.0.0",
-//     SEND: 1,
-//   }
-//   console.log("Tourism Scenario Data:", data)
-//   return data
-// }
-
-// // 폭풍 경보 시나리오
-// function generateStormScenario(devId, hour) {
-//   const data = {
-//     DEV_ID: devId,
-//     PM10: (30 + Math.random() * 15).toFixed(1), // 폭풍으로 인해 미세먼지 증가
-//     NO2: (0.03 + Math.random() * 0.01).toFixed(3), // NO2 소폭 증가
-//     SO2: (0.01 + Math.random() * 0.01).toFixed(3), // SO2 소폭 증가
-//     CO: (0.5 + Math.random() * 0.2).toFixed(3), // CO 수치 폭풍 시 상승
-//     TEMP: (18 + Math.random() * 5).toFixed(1), // 기본 온도 값
-//     HUMI: (70 + Math.random() * 10).toFixed(1), // 습도 증가
-//     WINDsp: (3.0 + Math.random() * 2).toFixed(1), // 폭풍으로 인한 풍속 증가
-//     FIRM: "1.0.0",
-//     SEND: 1,
-//   }
-//   console.log("Storm Scenario Data:", data)
-//   return data
-// }
-
-// // 기본적인 시간대별 더미 데이터 생성 함수
-// function generateTimeBasedDummyAirData(devId, hour) {
-//   const data = {
-//     DEV_ID: devId,
-//     PM10: (60 + Math.random() * 10).toFixed(1),
-//     PM25: (50 + Math.random() * 5).toFixed(1),
-//     SO2: (0.03 + Math.random() * 0.01).toFixed(3),
-//     NO2: (0.03 + Math.random() * 0.01).toFixed(3),
-//     O3: (0.05 + Math.random() * 0.01).toFixed(3),
-//     CO: (0.4 + Math.random() * 0.1).toFixed(3),
-//     VOC: (0.005 + Math.random() * 0.001).toFixed(3),
-//     H2S: (0.01 + Math.random() * 0.005).toFixed(3),
-//     NH3: (8 + Math.random() * 5).toFixed(1),
-//     OU: (0.005 + Math.random() * 0.003).toFixed(3),
-//     HCHO: (0.15 + Math.random() * 0.05).toFixed(3),
-//     TEMP: (25 + Math.random() * 5).toFixed(1),
-//     HUMI: (55 + Math.random() * 10).toFixed(1),
-//     WINsp: (2.0 + Math.random() * 1).toFixed(1),
-//     WINdir: (Math.random() * 360).toFixed(1),
-//     BATT: (12.0 + Math.random() * 0.5).toFixed(1),
-//     FIRM: "1.0.0",
-//     SEND: 1,
-//   }
-//   console.log("Time-based Dummy Air Data:", data)
-//   return data
-// }
-
-// // 트리거 시나리오 실행 예시
-// const devId = 1
-// const hour = 9 // 오전 9시
-// const dayOfWeek = 3 // 수요일
-// const event = "fishing_boat" // 어선 활동
-
-// // 트리거 함수를 호출하여 데이터를 생성
-// const airData = triggerScenario(devId, hour, dayOfWeek, event)
-// // console.log('Generated Air Data:', airData);

@@ -9,39 +9,55 @@ const connection = mysql.createConnection({
   database: "netro_data_platform",
 })
 
+let shipGtValues = {} // 각 id에 해당하는 gt 값을 저장
+
+
 connection.connect((err) => {
   if (err) throw err
   console.log("MySQL 연결 성공")
 
-  // 초기화 코드: ship_id 1부터 100까지 row 초기화
-  const tonageValues = [
-    10.9, 2.88, 10.61, 6.07, 15.44, 12.19, 142.49, 20.93, 7.84, 6.57, 11.9,
-    25.78, 6.62, 16.89, 13.11, 5.17, 20.93, 20.93, 76.52, 76.52, 7.73, 5.07,
-    84.44, 25.78, 12.51, 6.31, 76.52, 20.93, 25.78, 20.93, 4.33, 11.61, 13.17,
-    7.92, 76.52, 3.75, 15.17, 15.17, 11.9, 12.98, 9.26, 7.63, 25.78, 10.55,
-    92.36, 5.07, 6.07, 4.27, 25.78, 9.21, 25.78, 5.09, 9.16, 11.45, 110.83,
-    13.11, 84.44, 13.17, 10.55, 10.92, 7.73, 20.93, 102.91, 7.92, 25.78, 13.11,
-    13.01, 20.93, 25.78, 4.67, 13.11, 25.78, 5.07, 6.07, 7.73, 60.69, 10.55,
-    6.41, 11.56, 10.55, 76.52, 2.22, 5.2, 25.78, 25.78, 10.92, 15.44, 105.55,
-    84.44, 105.55, 76.52, 12.77, 6.7, 10.74, 25.78, 124.02, 14.25, 6.02, 11.9,
-    25.78,
-  ]
+  // tb_sys_ship_device 테이블에서 id와 gt 가져오기
+  const fetchGtQuery = `SELECT id, gt FROM tb_sys_ship_device LIMIT 202`
+  
+  connection.query(fetchGtQuery, (err, results) => {
+    if (err) throw err
 
-  tonageValues.forEach((tonage, index) => {
-    const ship_id = index + 1
-    const query = `
-      INSERT INTO old_ship (ship_id, lati, longi, cnt, stay_time, tonage, total, CO2)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE ship_id = ship_id
-    `
-    const values = [ship_id, 0, 0, 0, "00:00:00", tonage, 0, 0]
+    // id를 키로, gt를 값으로 저장
+    results.forEach((row) => {
+      shipGtValues[row.id] = row.gt || 1 // gt 값이 없으면 기본값 1 사용
+    })
+    console.log("gt 값 로드 완료:", shipGtValues)
 
-    connection.query(query, values, (err, result) => {
+    // tb_sys_ship_device 테이블에서 id 가져오기
+    const fetchIdsQuery = `SELECT id FROM tb_sys_ship_device LIMIT 202`
+    connection.query(fetchIdsQuery, (err, results) => {
       if (err) throw err
-      console.log(`초기화 완료: ship_id ${ship_id}`)
+
+      const shipIds = results.map((row) => row.id)
+
+      // 202대 데이터를 위한 추가 id 생성 (부족할 경우)
+      while (shipIds.length < 202) {
+        shipIds.push(shipIds.length + 1) // 임의로 1부터 순차적으로 추가
+      }
+
+      // tb_log_oldship 테이블 초기화
+      shipIds.forEach((id) => {
+        const query = `
+          INSERT INTO tb_log_oldship (id, lati, longi, cnt, stay_time, total, CO2)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE id = id
+        `
+        const values = [id, 0, 0, 0, "00:00:00", 0, 0]
+
+        connection.query(query, values, (err, result) => {
+          if (err) throw err
+          console.log(`초기화 완료: id ${id}`)
+        })
+      })
     })
   })
 })
+
 
 // 다각형 정의 (Polygon)
 const userDefinedPolygon = turf.polygon([
@@ -72,8 +88,8 @@ const userDefinedPolygon = turf.polygon([
 
 // 100대의 선박 초기화
 const cooldownDuration = 60 // 쿨다운 시간 (초)
-const ships = Array.from({ length: 100 }, (_, i) => ({
-  ship_id: i + 1,
+const ships = Array.from({ length: 202 }, (_, i) => ({
+  id: i + 1,
   lati: 35.989128 + Math.random() * 0.01,
   longi: 129.555139 + Math.random() * 0.01,
   wasInside: false,
@@ -95,7 +111,7 @@ const intervalId = setInterval(() => {
 
     // 쿨다운 중인 경우 재진입을 막음
     if (ship.cooldownEndTime && currentTime < ship.cooldownEndTime) {
-      console.log(`쿨다운 중 - ship_id: ${ship.ship_id}`)
+      console.log(`쿨다운 중 - id: ${ship.id}`)
       return
     }
 
@@ -107,8 +123,8 @@ const intervalId = setInterval(() => {
         const stayTime = 1
 
         // MySQL에서 기존 stay_time, total, CO2 가져와서 업데이트
-        const selectQuery = `SELECT stay_time, total, CO2 FROM old_ship WHERE ship_id = ?`
-        connection.query(selectQuery, [ship.ship_id], (err, results) => {
+        const selectQuery = `SELECT stay_time, total, CO2 FROM tb_log_oldship WHERE id = ?`
+        connection.query(selectQuery, [ship.id], (err, results) => {
           if (err) throw err
 
           if (results.length > 0) {
@@ -133,7 +149,10 @@ const intervalId = setInterval(() => {
 
             const V = Math.random() * 2 + 2
             const C = Math.random() * 0.05 + 0.01
-            const emissions = calculateEmissions(1, stayTime, V, C)
+            const T = shipGtValues[ship.id] || 1 // gt 값 가져오기
+            const emissions = calculateEmissions(T, stayTime, V, C)
+
+
             const updatedTotal = currentTotal + emissions
             const updatedCO2 = Math.max(
               0,
@@ -141,22 +160,17 @@ const intervalId = setInterval(() => {
             )
 
             const updateQuery = `
-              UPDATE old_ship
+              UPDATE tb_log_oldship
               SET stay_time = ?, total = ?, CO2 = ?
-              WHERE ship_id = ?
+              WHERE id = ?
             `
-            const values = [
-              updatedStayTime,
-              updatedTotal,
-              updatedCO2,
-              ship.ship_id,
-            ]
+            const values = [updatedStayTime, updatedTotal, updatedCO2, ship.id]
 
             connection.query(updateQuery, values, (err, result) => {
               if (err) throw err
               console.log(
-                `업데이트 완료: ship_id ${
-                  ship.ship_id
+                `업데이트 완료: id ${
+                  ship.id
                 }, stay_time: ${updatedStayTime}, total: ${updatedTotal.toFixed(
                   2
                 )}, CO2: ${updatedCO2}`
@@ -174,7 +188,7 @@ const intervalId = setInterval(() => {
         ship.cooldownEndTime = new Date(
           currentTime.getTime() + cooldownDuration * 1000
         )
-        console.log(`선박이 다각형을 떠남 - ship_id: ${ship.ship_id}`)
+        console.log(`선박이 다각형을 떠남 - id: ${ship.id}`)
       }
     }
 
@@ -194,22 +208,20 @@ const intervalId = setInterval(() => {
         ship.cntUpdated = true
         ship.wasInside = true
 
-        const selectQuery = `SELECT cnt FROM old_ship WHERE ship_id = ?`
-        connection.query(selectQuery, [ship.ship_id], (err, results) => {
+        const selectQuery = `SELECT cnt FROM tb_log_oldship WHERE id = ?`
+        connection.query(selectQuery, [ship.id], (err, results) => {
           if (err) throw err
 
           if (results.length > 0) {
             const currentCnt = results[0].cnt || 0
             const updatedCnt = currentCnt + 1
 
-            const updateQuery = `UPDATE old_ship SET cnt = ? WHERE ship_id = ?`
-            const values = [updatedCnt, ship.ship_id]
+            const updateQuery = `UPDATE tb_log_oldship SET cnt = ? WHERE id = ?`
+            const values = [updatedCnt, ship.id]
 
             connection.query(updateQuery, values, (err, result) => {
               if (err) throw err
-              console.log(
-                `cnt 증가 완료: ship_id ${ship.ship_id}, cnt: ${updatedCnt}`
-              )
+              console.log(`cnt 증가 완료: id ${ship.id}, cnt: ${updatedCnt}`)
             })
           }
         })
