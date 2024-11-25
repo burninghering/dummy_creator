@@ -43,7 +43,7 @@ connection.connect((err) => {
       // tb_log_oldship 테이블 초기화
       shipIds.forEach((id) => {
         const query = `
-          INSERT INTO tb_log_oldship (id, lati, longi, cnt, stay_time, total, CO2)
+          INSERT INTO tb_log_oldship (id, lati, longi, cnt, stay_time, emi_per_sec, CO2)
           VALUES (?, ?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE id = id
         `
@@ -101,131 +101,97 @@ const ships = Array.from({ length: 202 }, (_, i) => ({
 
 // E_total 계산 함수
 function calculateEmissions(T, t, V, C) {
-  return C * V * t * T // t는 실제 정박 시간(초 단위)
+  return C * V * t * T; // t는 1초 단위로 고정
 }
 
 // 1초마다 실행하는 함수
 const intervalId = setInterval(() => {
   ships.forEach((ship) => {
-    const currentTime = new Date()
+    const currentTime = new Date();
 
     // 쿨다운 중인 경우 재진입을 막음
     if (ship.cooldownEndTime && currentTime < ship.cooldownEndTime) {
-      console.log(`쿨다운 중 - id: ${ship.id}`)
-      return
+      console.log(`쿨다운 중 - id: ${ship.id}`);
+      return;
     }
 
     if (ship.wasInside && ship.insideStartTime) {
-      const elapsedTime = (currentTime - ship.insideStartTime) / 1000
+      const elapsedTime = (currentTime - ship.insideStartTime) / 1000;
 
       if (elapsedTime < ship.exitAfter) {
-        // 다각형 내에 있을 때 매초 stay_time, total, CO2 업데이트
-        const stayTime = 1
+        // 다각형 내에 있을 때 매초 stay_time, CO2 업데이트
+        const stayTime = 1;
 
-        // MySQL에서 기존 stay_time, total, CO2 가져와서 업데이트
-        const selectQuery = `SELECT stay_time, total, CO2 FROM tb_log_oldship WHERE id = ?`
-        connection.query(selectQuery, [ship.id], (err, results) => {
-          if (err) throw err
+        const V = Math.random() * 2 + 2;
+        const C = Math.random() * 0.05 + 0.01;
+        const T = shipGtValues[ship.id] || 1; // gt 값 가져오기
+        const emissions = calculateEmissions(T, stayTime, V, C); // 1초 배출량 계산
 
-          if (results.length > 0) {
-            let currentStayTime = results[0].stay_time || "00:00:00"
-            let currentTotal = results[0].total || 0
-            let currentCO2 = results[0].CO2 || 0
+        const updateQuery = `
+          UPDATE tb_log_oldship
+          SET stay_time = ADDTIME(stay_time, '00:00:01'), 
+              emi_per_sec = ?, 
+              CO2 = ?
+          WHERE id = ?
+        `;
+        const values = [emissions, emissions, ship.id];
 
-            const [hours, minutes, seconds] = currentStayTime
-              .split(":")
-              .map(Number)
-            const totalSeconds =
-              hours * 3600 + minutes * 60 + seconds + stayTime
-            const newHours = Math.floor(totalSeconds / 3600)
-            const newMinutes = Math.floor((totalSeconds % 3600) / 60)
-            const newSeconds = totalSeconds % 60
-            const updatedStayTime = `${String(newHours).padStart(
-              2,
-              "0"
-            )}:${String(newMinutes).padStart(2, "0")}:${String(
-              newSeconds
-            ).padStart(2, "0")}`
-
-            const V = Math.random() * 2 + 2
-            const C = Math.random() * 0.05 + 0.01
-            const T = shipGtValues[ship.id] || 1 // gt 값 가져오기
-            const emissions = calculateEmissions(T, stayTime, V, C)
-
-
-            const updatedTotal = currentTotal + emissions
-            const updatedCO2 = Math.max(
-              0,
-              currentCO2 + parseFloat((Math.random() * 10 - 5).toFixed(2))
-            )
-
-            const updateQuery = `
-              UPDATE tb_log_oldship
-              SET stay_time = ?, total = ?, CO2 = ?
-              WHERE id = ?
-            `
-            const values = [updatedStayTime, updatedTotal, updatedCO2, ship.id]
-
-            connection.query(updateQuery, values, (err, result) => {
-              if (err) throw err
-              console.log(
-                `업데이트 완료: id ${
-                  ship.id
-                }, stay_time: ${updatedStayTime}, total: ${updatedTotal.toFixed(
-                  2
-                )}, CO2: ${updatedCO2}`
-              )
-            })
-          }
-        })
-        return
+        connection.query(updateQuery, values, (err, result) => {
+          if (err) throw err;
+          console.log(
+            `업데이트 완료: id ${ship.id}, emi_per_sec: ${emissions.toFixed(
+              2
+            )}, CO2: ${emissions.toFixed(2)}`
+          );
+        });
+        return;
       } else {
         // 배가 다각형을 떠나고 쿨다운 시작
-        ship.wasInside = false
-        ship.insideStartTime = null
-        ship.exitAfter = null
-        ship.cntUpdated = false
+        ship.wasInside = false;
+        ship.insideStartTime = null;
+        ship.exitAfter = null;
+        ship.cntUpdated = false;
         ship.cooldownEndTime = new Date(
           currentTime.getTime() + cooldownDuration * 1000
-        )
-        console.log(`선박이 다각형을 떠남 - id: ${ship.id}`)
+        );
+        console.log(`선박이 다각형을 떠남 - id: ${ship.id}`);
       }
     }
 
     // 선박 이동 (다각형 밖으로 이동)
-    ship.lati += (Math.random() - 0.5) * 0.001
-    ship.longi += (Math.random() - 0.5) * 0.001
+    ship.lati += (Math.random() - 0.5) * 0.001;
+    ship.longi += (Math.random() - 0.5) * 0.001;
 
-    const point = turf.point([ship.longi, ship.lati])
-    const isInside = turf.booleanPointInPolygon(point, userDefinedPolygon)
+    const point = turf.point([ship.longi, ship.lati]);
+    const isInside = turf.booleanPointInPolygon(point, userDefinedPolygon);
 
     if (isInside && !ship.wasInside) {
       // 쿨다운 시간 종료 후만 재진입 허용
       if (!ship.cooldownEndTime || currentTime >= ship.cooldownEndTime) {
-        ship.insideStartTime = new Date()
+        ship.insideStartTime = new Date();
         ship.exitAfter =
-          Math.floor(Math.random() * (10 * 60 - 1 * 60 + 1)) + 1 * 60
-        ship.cntUpdated = true
-        ship.wasInside = true
+          Math.floor(Math.random() * (10 * 60 - 1 * 60 + 1)) + 1 * 60;
+        ship.cntUpdated = true;
+        ship.wasInside = true;
 
-        const selectQuery = `SELECT cnt FROM tb_log_oldship WHERE id = ?`
+        const selectQuery = `SELECT cnt FROM tb_log_oldship WHERE id = ?`;
         connection.query(selectQuery, [ship.id], (err, results) => {
-          if (err) throw err
+          if (err) throw err;
 
           if (results.length > 0) {
-            const currentCnt = results[0].cnt || 0
-            const updatedCnt = currentCnt + 1
+            const currentCnt = results[0].cnt || 0;
+            const updatedCnt = currentCnt + 1;
 
-            const updateQuery = `UPDATE tb_log_oldship SET cnt = ? WHERE id = ?`
-            const values = [updatedCnt, ship.id]
+            const updateQuery = `UPDATE tb_log_oldship SET cnt = ? WHERE id = ?`;
+            const values = [updatedCnt, ship.id];
 
             connection.query(updateQuery, values, (err, result) => {
-              if (err) throw err
-              console.log(`cnt 증가 완료: id ${ship.id}, cnt: ${updatedCnt}`)
-            })
+              if (err) throw err;
+              console.log(`cnt 증가 완료: id ${ship.id}, cnt: ${updatedCnt}`);
+            });
           }
-        })
+        });
       }
     }
-  })
-}, 1000)
+  });
+}, 1000);
