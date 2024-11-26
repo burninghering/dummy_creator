@@ -1,82 +1,24 @@
 const WebSocket = require("ws")
 const mysql = require("mysql2")
-// WebSocket 서버에 연결
 const ws = new WebSocket("ws://127.0.0.1:5000")
 const pointInPolygon = require("point-in-polygon")
+require('dotenv').config();
 
-// 데이터베이스 연결 풀 설정
 const pool = mysql.createPool({
-  host: "172.25.4.87",
-  port: 3306,
-  user: "root",
-  password: "DH2vY8M17fQqpFdm",
-  database: "netro_data_platform",
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-})
-
-const vesselState = {} // 각 선박의 상태 저장 객체
-
-async function initializeVesselState() {
-  return new Promise((resolve, reject) => {
-    pool.query(
-      `SELECT DEV_ID, SEN_ID, sen_value FROM example_vessel_log_data_latest WHERE SEN_ID IN (2, 3, 4, 5, 6)`,
-      (err, results) => {
-        if (err) {
-          console.error("초기 좌표를 가져오는 중 오류 발생:", err)
-          return reject(err)
-        }
-
-        results.forEach((row) => {
-          const devId = row.DEV_ID
-          const senId = row.SEN_ID
-          const value = parseFloat(row.sen_value)
-
-          if (!vesselState[devId]) {
-            vesselState[devId] = {
-              lati: 0,
-              longi: 0,
-              speed: 0,
-              course: 0,
-              azimuth: 0,
-            }
-          }
-
-          // `sen_id`에 따라 위도, 경도, 속도, 방향 또는 방위각을 설정
-          switch (senId) {
-            case 2:
-              vesselState[devId].lati = value
-              break
-            case 3:
-              vesselState[devId].longi = value
-              break
-            case 4:
-              vesselState[devId].speed = value
-              break
-            case 5:
-              vesselState[devId].course = value
-              break
-            case 6:
-              vesselState[devId].azimuth = value
-              break
-          }
-        })
-
-        console.log("선박 상태 초기화 완료")
-        resolve() // 초기화 완료 시 resolve 호출
-      }
-    )
-  })
-}
+  host: process.env.DB_HOST,
+  port: process.env.DB_PORT,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_DATABASE,
+  waitForConnections: process.env.DB_WAIT_FOR_CONNECTIONS === "true", // 문자열로 읽히므로 Boolean으로 변환
+  connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT, 10), // 정수로 변환
+  queueLimit: parseInt(process.env.DB_QUEUE_LIMIT, 10), // 정수로 변환
+});
 
 // 연결이 열리면 메시지를 보내는 함수
 ws.on("open", async () => {
-  console.log("Connected to WebSocket server")
-
-  // 초기 위치 설정 완료 후 데이터 전송 주기 시작
-  await initializeVesselState()
-
+    console.log("Connected to WebSocket server")
+    
   setInterval(() => {
     const currentHour = new Date().getHours()
 
@@ -114,105 +56,6 @@ ws.on("open", async () => {
 
     console.log(`Sent buoy data to WebSocket server for Hour ${currentHour}`)
   }, 5000) // 5초마다 데이터 전송
-
-  // 모든 devId에 대해 매 1초마다 Vessel 데이터를 생성하여 서버로 전송
-
-  let vesselDataList = [] // vesselData를 저장할 배열
-
-  setInterval(() => {
-    // 다각형 구역을 미리 정의
-    const userDefinedPolygon = [
-      [35.989301, 129.559683], // 첫 번째 꼭짓점
-      [35.990568, 129.557613],
-      [35.990018, 129.55592],
-      [35.989333, 129.556572],
-      [35.98877, 129.555796],
-      [35.989203, 129.555154],
-      [35.987217, 129.552773],
-      [35.985626, 129.552162],
-      [35.983288, 129.555102],
-      [35.986041, 129.560725],
-      [35.983321, 129.559852],
-      [35.978506, 129.553306],
-      [35.969736, 129.555431],
-      [35.986004, 129.572315],
-      [35.988819, 129.561302],
-      [35.986642, 129.558267],
-      [35.985553, 129.55833],
-      [35.985502, 129.55761],
-      [35.987199, 129.556984],
-      [35.987072, 129.557047],
-      [35.989301, 129.559683], // 마지막 좌표 (다각형 닫기)
-    ]
-    // 1번부터 100번까지 모든 devId의 데이터를 업데이트하고 전송
-    for (let devId = 1; devId <= 100; devId++) {
-      // vesselState에 devId가 없으면 초기화
-      if (!vesselState[devId]) {
-        const { lati, longi } =
-          getRandomCoordinateWithinPolygon(userDefinedPolygon)
-        vesselState[devId] = {
-          lati,
-          longi,
-          speed: 2 + Math.random() * 10, // 초기 속도 설정
-          course: Math.floor(Math.random() * 360), // 초기 방향 설정
-        }
-      }
-
-      // 위치 업데이트 및 데이터 생성
-      const vesselData = generateCurvedVesselData(devId, userDefinedPolygon)
-
-      vesselDataList.push(vesselData)
-    }
-    console.log(vesselDataList)
-    const sendPromises = vesselDataList.map((data) => {
-      return new Promise((resolve, reject) => {
-        ws.send(JSON.stringify(data), (err) => {
-          if (err) {
-            reject(`Error sending data: ${JSON.stringify(data)}`)
-          } else {
-            resolve(`Sent data: ${JSON.stringify(data)}`)
-          }
-        })
-      })
-    })
-    // 병렬 전송을 처리하고 결과를 출력
-    Promise.all(sendPromises)
-      .then((results) => {
-        console.log("All data sent:", results)
-      })
-      .catch((err) => {
-        console.error("Error in sending data:", err)
-      })
-  }, 1000) // 1초마다 데이터 전송
-
-//   setInterval(async () => {
-//     if (vesselDataList.length > 0) {
-//       // WebSocket으로 모든 데이터를 한 번에 전송
-//       await sendVesselData(vesselDataList)
-
-//       // 로그로 데이터 전송 확인
-//       console.log("Sent Vessel data:", vesselDataList)
-
-//       // 전송 후, 배열 초기화 (다음 데이터를 받기 위해)
-//       vesselDataList = []
-//     }
-//   }, 1000)
-
-//   // 비동기 함수로 데이터 전송
-//   async function sendVesselData(data) {
-//     return new Promise((resolve, reject) => {
-//       ws.send(JSON.stringify(data), (error) => {
-//         if (error) {
-//           console.error("Error sending WebSocket data:", error)
-//           reject(error)
-//         } else {
-//           resolve()
-//         }
-//       })
-//     })
-//   }
-
-  ////끝
 })
 
 // 서버로부터 응답 메시지를 받으면 처리

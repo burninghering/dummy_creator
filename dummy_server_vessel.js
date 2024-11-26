@@ -1,18 +1,18 @@
 const WebSocket = require("ws")
 const mysql = require("mysql2")
 const pointInPolygon = require("point-in-polygon")
+require('dotenv').config();
 
-// 데이터베이스 연결 풀 설정
 const pool = mysql.createPool({
-  host: "121.189.20.71",
-  port: 3306,
-  user: "root",
-  password: "DH2vY8M17fQqpFdm",
-  database: "netro_data_platform",
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-})
+  host: process.env.DB_HOST,
+  port: process.env.DB_PORT,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_DATABASE,
+  waitForConnections: process.env.DB_WAIT_FOR_CONNECTIONS === "true", // 문자열로 읽히므로 Boolean으로 변환
+  connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT, 10), // 정수로 변환
+  queueLimit: parseInt(process.env.DB_QUEUE_LIMIT, 10), // 정수로 변환
+});
 
 // 선박 상태를 저장하는 객체
 const vesselState = {}
@@ -46,7 +46,7 @@ const userDefinedPolygon = [
 
 // WebSocket 배열 생성
 const webSockets = []
-for (let devId = 1; devId <= 202; devId++) {
+for (let devId = 1; devId <= 50; devId++) {
   const ws = new WebSocket(`ws://127.0.0.1:6002/vessel${devId}`)
   webSockets.push(ws)
 
@@ -56,9 +56,9 @@ for (let devId = 1; devId <= 202; devId++) {
       const parsedData = JSON.parse(data)
       dataBuffer.push(parsedData)
 
-      // 버퍼 크기가 202개가 되면 병합 처리
-      if (dataBuffer.length >= 202) {
-        processBatch(dataBuffer.splice(0, 202)) // 202개씩 잘라내서 처리
+      // 버퍼 크기가 50개가 되면 병합 처리
+      if (dataBuffer.length >= 50) {
+        processBatch(dataBuffer.splice(0, 50)) // 50개씩 잘라내서 처리
       }
     } catch (err) {
       console.error(`DEV_ID ${devId}에서 데이터를 처리하는 중 오류 발생:`, err)
@@ -139,7 +139,7 @@ async function initializeVesselState() {
 
 // 202개의 데이터를 처리하는 함수
 function processBatch(batch) {
-  console.log(`202개의 데이터를 처리 중입니다:`)
+  console.log(`50개의 데이터를 처리 중입니다:`)
 
   const mergedData = mergeData(batch)
   //   console.log("병합된 데이터:", mergedData)
@@ -242,7 +242,7 @@ function formatDateToYYYYMMDDHHMMSS(date) {
   setInterval(async () => {
     const sendPromises = []; // 병렬 처리를 위한 Promise 배열
 
-    for (let devId = 1; devId <= 202; devId++) {
+    for (let devId = 1; devId <= 50; devId++) {
       const ws = webSockets[devId - 1];
       if (ws.readyState === WebSocket.OPEN) {
         const vesselData = generateCurvedVesselData(devId, userDefinedPolygon);

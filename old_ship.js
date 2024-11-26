@@ -1,13 +1,14 @@
-const mysql = require("mysql")
+const mysql = require("mysql2")
 const turf = require("@turf/turf")
+require("dotenv").config();
 
-// MySQL 데이터베이스 연결 설정
 const connection = mysql.createConnection({
-  host: "192.168.0.225",
-  user: "root",
-  password: "netro9888!",
-  database: "netro_data_platform",
-})
+  host: process.env.DB_HOST,
+  port: process.env.DB_PORT,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_DATABASE,
+});
 
 let shipGtValues = {} // 각 id에 해당하는 gt 값을 저장
 

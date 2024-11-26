@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vessel Tracking</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <style>
+    #map {
+      width: 100%;
+      height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <script>
+    // Leaflet 지도 초기화
+    const map = L.map('map').setView([35.989301, 129.559683], 13);
+
+    // OpenStreetMap 타일 추가
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '© OpenStreetMap contributors',
+    }).addTo(map);
+
+    // 다각형 영역 표시
+    const userDefinedPolygon = [
+    [35.989301, 129.559683], // 위도, 경도 (Latitude, Longitude 순서)
+    [35.990568, 129.557613],
+    [35.990018, 129.55592],
+    [35.989333, 129.556572],
+    [35.98877, 129.555796],
+    [35.989203, 129.555154],
+    [35.987217, 129.552773],
+    [35.985626, 129.552162],
+    [35.983288, 129.555102],
+    [35.986041, 129.560725],
+    [35.983321, 129.559852],
+    [35.978506, 129.553306],
+    [35.969736, 129.555431],
+    [35.965728, 129.581481],
+    [35.986439, 129.588861],
+    [35.988819, 129.561302],
+    [35.986642, 129.558267],
+    [35.985553, 129.55833],
+    [35.985502, 129.55761],
+    [35.987199, 129.556984],
+    [35.987072, 129.557047],
+    [35.989301, 129.559683] // 다각형 닫기
+]
+
+    L.polygon(userDefinedPolygon, { color: 'blue', fillOpacity: 0.1 }).addTo(map);
+
+    // 선박 마커 관리
+    const vesselMarkers = {};
+
+    // WebSocket 연결
+    const ws = new WebSocket('ws://127.0.0.1:6003');
+
+    ws.onopen = () => {
+      console.log('WebSocket 연결 성공');
+    };
+
+    ws.onmessage = (event) => {
+      const vessels = JSON.parse(event.data);
+      vessels.forEach((vessel) => {
+        const { id, lati, longi, speed, course, azimuth } = vessel;
+
+        if (!vesselMarkers[id]) {
+          // 마커 생성
+          const marker = L.marker([lati, longi]).addTo(map)
+            .bindPopup(`ID: ${id}<br>Speed: ${speed} knots<br>Course: ${course}°<br>Azimuth: ${azimuth}°`);
+          vesselMarkers[id] = marker;
+        } else {
+          // 기존 마커 업데이트
+          const marker = vesselMarkers[id];
+          marker.setLatLng([lati, longi]);
+          marker.setPopupContent(`ID: ${id}<br>Speed: ${speed} knots<br>Course: ${course}°<br>Azimuth: ${azimuth}°`);
+        }
+      });
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket 연결 종료');
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket 오류:', error);
+    };
+  </script>
+</body>
+</html>
